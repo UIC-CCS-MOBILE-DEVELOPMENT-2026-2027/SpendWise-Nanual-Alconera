@@ -81,11 +81,145 @@ Color categoryColor(String category) {
   }
 }
 
-class SpendWiseApp extends StatelessWidget {
+// ─── Level System ──────────────────────────────────────────────────
+
+int levelFromXp(int xp) {
+  if (xp >= 1100) return 7;
+  if (xp >= 800) return 6;
+  if (xp >= 550) return 5;
+  if (xp >= 350) return 4;
+  if (xp >= 200) return 3;
+  if (xp >= 100) return 2;
+  return 1;
+}
+
+String levelTitle(int level) {
+  const titles = {
+    1: 'Money Explorer',
+    2: 'Budget Apprentice',
+    3: 'Savings Scout',
+    4: 'Finance Warrior',
+    5: 'Wealth Guardian',
+    6: 'Budget Legend',
+    7: 'Money Master',
+  };
+  return titles[level] ?? 'Money Master';
+}
+
+int xpForLevel(int level) {
+  const thresholds = {1: 0, 2: 100, 3: 200, 4: 350, 5: 550, 6: 800, 7: 1100};
+  return thresholds[level] ?? 1100;
+}
+
+// ─── Quest Definitions ─────────────────────────────────────────────
+
+class QuestDef {
+  final String id;
+  final String title;
+  final String description;
+  final int xp;
+  final int coins;
+  final String category;
+  final IconData icon;
+
+  const QuestDef({
+    required this.id,
+    required this.title,
+    required this.description,
+    required this.xp,
+    required this.coins,
+    required this.category,
+    required this.icon,
+  });
+
+  String get rewardText => '+$xp XP · +$coins coins';
+}
+
+const List<QuestDef> allQuests = [
+  // Basics
+  QuestDef(id: 'first_expense', title: 'First Expense', description: 'Record your first transaction.', xp: 10, coins: 5, category: 'basics', icon: Icons.flag_rounded),
+  QuestDef(id: 'track_five_expenses', title: 'Track Your Spending', description: 'Record five expenses.', xp: 20, coins: 10, category: 'basics', icon: Icons.format_list_numbered_rounded),
+  QuestDef(id: 'track_ten_expenses', title: 'Dedicated Tracker', description: 'Record ten expenses.', xp: 30, coins: 15, category: 'basics', icon: Icons.trending_up_rounded),
+  QuestDef(id: 'track_twenty_five', title: 'Quarter Century', description: 'Record twenty-five expenses.', xp: 50, coins: 25, category: 'basics', icon: Icons.military_tech_rounded),
+  QuestDef(id: 'three_categories', title: 'Diversified Spender', description: 'Log expenses in 3 different categories.', xp: 20, coins: 10, category: 'basics', icon: Icons.category_rounded),
+  QuestDef(id: 'all_categories', title: 'Full Spectrum', description: 'Log expenses in all 8 categories.', xp: 40, coins: 20, category: 'basics', icon: Icons.auto_awesome_rounded),
+  // Budget
+  QuestDef(id: 'set_monthly_budget', title: 'Budget Planner', description: 'Set your overall monthly budget.', xp: 15, coins: 10, category: 'budget', icon: Icons.account_balance_wallet_rounded),
+  QuestDef(id: 'set_category_budget', title: 'Category Master', description: 'Set a budget for any category.', xp: 15, coins: 10, category: 'budget', icon: Icons.tune_rounded),
+  QuestDef(id: 'under_budget_month', title: 'Budget Hero', description: 'Stay under your monthly budget with 5+ expenses this month.', xp: 50, coins: 30, category: 'budget', icon: Icons.shield_rounded),
+  QuestDef(id: 'big_saver', title: 'Big Saver', description: 'Have 50%+ of your monthly budget remaining with 3+ expenses.', xp: 60, coins: 40, category: 'budget', icon: Icons.savings_rounded),
+  // Streaks
+  QuestDef(id: 'streak_3', title: '3-Day Streak', description: 'Log expenses 3 days in a row.', xp: 15, coins: 5, category: 'streak', icon: Icons.local_fire_department_rounded),
+  QuestDef(id: 'streak_7', title: 'Week Warrior', description: 'Log expenses 7 days in a row.', xp: 30, coins: 15, category: 'streak', icon: Icons.local_fire_department_rounded),
+  QuestDef(id: 'streak_14', title: 'Fortnight Focus', description: 'Log expenses 14 days in a row.', xp: 50, coins: 25, category: 'streak', icon: Icons.local_fire_department_rounded),
+  QuestDef(id: 'streak_30', title: 'Monthly Master', description: 'Log expenses 30 days in a row.', xp: 100, coins: 50, category: 'streak', icon: Icons.local_fire_department_rounded),
+];
+
+// ─── Theme Shop Definitions ────────────────────────────────────────
+
+class ThemeOption {
+  final String id;
+  final String name;
+  final String emoji;
+  final Color color;
+  final int cost;
+  final List<Color> gradient;
+
+  const ThemeOption({
+    required this.id,
+    required this.name,
+    required this.emoji,
+    required this.color,
+    required this.cost,
+    required this.gradient,
+  });
+}
+
+const List<ThemeOption> shopThemes = [
+  ThemeOption(id: 'default', name: 'Royal Violet', emoji: '💜', color: violet, cost: 0, gradient: [Color(0xFF7858FF), Color(0xFF5135B8)]),
+  ThemeOption(id: 'emerald', name: 'Emerald', emoji: '💚', color: Color(0xFF10B981), cost: 50, gradient: [Color(0xFF10B981), Color(0xFF065F46)]),
+  ThemeOption(id: 'sunset', name: 'Sunset', emoji: '🌅', color: Color(0xFFFF6B35), cost: 50, gradient: [Color(0xFFFF6B35), Color(0xFFB83A00)]),
+  ThemeOption(id: 'ocean', name: 'Ocean', emoji: '🌊', color: Color(0xFF3B82F6), cost: 50, gradient: [Color(0xFF3B82F6), Color(0xFF1E40AF)]),
+  ThemeOption(id: 'rose', name: 'Rose', emoji: '🌹', color: Color(0xFFF43F5E), cost: 50, gradient: [Color(0xFFF43F5E), Color(0xFF9F1239)]),
+  ThemeOption(id: 'gold', name: 'Gold Premium', emoji: '✨', color: Color(0xFFD4A017), cost: 100, gradient: [Color(0xFFD4A017), Color(0xFF8B6914)]),
+];
+
+class SpendWiseApp extends StatefulWidget {
   const SpendWiseApp({super.key});
 
   @override
+  State<SpendWiseApp> createState() => _SpendWiseAppState();
+}
+
+class _SpendWiseAppState extends State<SpendWiseApp> {
+  String _activeThemeId = 'default';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSavedTheme();
+  }
+
+  Future<void> _loadSavedTheme() async {
+    final data = await ExpenseStorage().loadShopData();
+    final id = data['selectedTheme'] as String? ?? 'default';
+    if (mounted && id != _activeThemeId) {
+      setState(() => _activeThemeId = id);
+    }
+  }
+
+  void _onThemeChanged(String newId) {
+    setState(() => _activeThemeId = newId);
+  }
+
+  ThemeOption get _currentTheme => shopThemes.firstWhere(
+        (t) => t.id == _activeThemeId,
+        orElse: () => shopThemes.first,
+      );
+
+  @override
   Widget build(BuildContext context) {
+    final primary = _currentTheme.color;
     return MaterialApp(
       title: 'SpendWise',
       debugShowCheckedModeBanner: false,
@@ -93,7 +227,7 @@ class SpendWiseApp extends StatelessWidget {
         brightness: Brightness.dark,
         scaffoldBackgroundColor: navy,
         colorScheme: ColorScheme.fromSeed(
-          seedColor: violet,
+          seedColor: primary,
           brightness: Brightness.dark,
         ),
         useMaterial3: true,
@@ -110,17 +244,27 @@ class SpendWiseApp extends StatelessWidget {
           ),
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(14),
-            borderSide: const BorderSide(color: violet),
+            borderSide: BorderSide(color: primary),
           ),
         ),
       ),
-      home: const MainPage(),
+      home: MainPage(
+        currentTheme: _currentTheme,
+        onThemeChanged: _onThemeChanged,
+      ),
     );
   }
 }
 
 class MainPage extends StatefulWidget {
-  const MainPage({super.key});
+  final ThemeOption currentTheme;
+  final ValueChanged<String> onThemeChanged;
+
+  const MainPage({
+    super.key,
+    required this.currentTheme,
+    required this.onThemeChanged,
+  });
 
   @override
   State<MainPage> createState() => _MainPageState();
@@ -138,9 +282,19 @@ class _MainPageState extends State<MainPage> {
   int _questCoins = 0;
   final Set<String> _completedQuests = {};
 
+  int _currentStreak = 0;
+  int _bestStreak = 0;
+
+  Set<String> _unlockedThemes = {'default'};
+  int _questTabSegment = 0; // 0: Quests, 1: Coin Shop
+  String _questCategoryFilter = 'all'; // all, basics, budget, streak
+
   bool _loading = true;
   bool _questStateLoaded = false;
   int _selectedTab = 0;
+
+  Color get _primaryColor => widget.currentTheme.color;
+  List<Color> get _primaryGradient => widget.currentTheme.gradient;
 
   @override
   void initState() {
@@ -154,12 +308,163 @@ class _MainPageState extends State<MainPage> {
       _loadBudgets(),
       _loadMonthlyBudget(),
       _loadQuestProgress(),
+      _loadStreak(),
+      _loadShop(),
     ]);
 
     if (!mounted) return;
 
+    _recalculateStreak();
     setState(() => _loading = false);
-    await _updateQuestProgress();
+    await _updateQuestProgress(showCelebration: false);
+  }
+
+  Future<void> _loadStreak() async {
+    try {
+      final data = await _storage.loadStreakData();
+      if (!mounted) return;
+      setState(() {
+        _currentStreak = (data['currentStreak'] as num?)?.toInt() ?? 0;
+        _bestStreak = (data['bestStreak'] as num?)?.toInt() ?? 0;
+      });
+    } catch (_) {}
+  }
+
+  void _recalculateStreak() {
+    if (_expenses.isEmpty) {
+      _currentStreak = 0;
+      return;
+    }
+
+    final Set<String> activeDates = {};
+    for (final e in _expenses) {
+      final d = e.date;
+      activeDates.add(
+        '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}',
+      );
+    }
+
+    final now = DateTime.now();
+    final todayStr =
+        '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+    final yesterday = now.subtract(const Duration(days: 1));
+    final yesterdayStr =
+        '${yesterday.year}-${yesterday.month.toString().padLeft(2, '0')}-${yesterday.day.toString().padLeft(2, '0')}';
+
+    var current = 0;
+    DateTime? checkDate;
+    if (activeDates.contains(todayStr)) {
+      checkDate = now;
+    } else if (activeDates.contains(yesterdayStr)) {
+      checkDate = yesterday;
+    }
+
+    if (checkDate != null) {
+      DateTime cursor = checkDate;
+      while (true) {
+        final key =
+            '${cursor.year}-${cursor.month.toString().padLeft(2, '0')}-${cursor.day.toString().padLeft(2, '0')}';
+        if (activeDates.contains(key)) {
+          current++;
+          cursor = cursor.subtract(const Duration(days: 1));
+        } else {
+          break;
+        }
+      }
+    }
+
+    _currentStreak = current;
+    if (_currentStreak > _bestStreak) {
+      _bestStreak = _currentStreak;
+    }
+
+    _storage.saveStreakData({
+      'currentStreak': _currentStreak,
+      'bestStreak': _bestStreak,
+    });
+  }
+
+  Future<void> _loadShop() async {
+    try {
+      final data = await _storage.loadShopData();
+      final list = data['unlockedThemes'];
+      if (!mounted) return;
+      setState(() {
+        _unlockedThemes = list is List
+            ? list.whereType<String>().toSet()
+            : {'default'};
+        if (!_unlockedThemes.contains('default')) {
+          _unlockedThemes.add('default');
+        }
+      });
+    } catch (_) {}
+  }
+
+  Future<void> _buyOrEquipTheme(ThemeOption theme) async {
+    final isUnlocked = _unlockedThemes.contains(theme.id);
+    final isActive = widget.currentTheme.id == theme.id;
+
+    if (isActive) return;
+
+    if (isUnlocked) {
+      widget.onThemeChanged(theme.id);
+      await _storage.saveShopData({
+        'selectedTheme': theme.id,
+        'unlockedThemes': _unlockedThemes.toList(),
+      });
+      _message('Equipped ${theme.name} theme!');
+      return;
+    }
+
+    // Purchase check
+    if (_questCoins < theme.cost) {
+      _message(
+        'Need ${theme.cost - _questCoins} more coins! Complete quests to earn coins.',
+      );
+      return;
+    }
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: surface,
+        title: Text('Unlock ${theme.name}?'),
+        content: Text('Spend ${theme.cost} coins to unlock the ${theme.name} theme?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: theme.color),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text('Unlock for ${theme.cost} 🪙'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true || !mounted) return;
+
+    setState(() {
+      _questCoins -= theme.cost;
+      _unlockedThemes.add(theme.id);
+    });
+
+    widget.onThemeChanged(theme.id);
+
+    await _storage.saveQuestProgress({
+      'xp': _questXp,
+      'coins': _questCoins,
+      'completedQuests': _completedQuests.toList(),
+    });
+
+    await _storage.saveShopData({
+      'selectedTheme': theme.id,
+      'unlockedThemes': _unlockedThemes.toList(),
+    });
+
+    _message('Unlocked and equipped ${theme.name} theme! 🎉');
   }
 
   Future<void> _loadExpenses() async {
@@ -217,28 +522,69 @@ class _MainPageState extends State<MainPage> {
     }
   }
 
-  Future<void> _updateQuestProgress() async {
+  Future<void> _updateQuestProgress({bool showCelebration = true}) async {
     if (!_questStateLoaded) return;
 
-    var changed = false;
+    _recalculateStreak();
 
-    void completeQuest(String id, int xp, int coins) {
-      if (_completedQuests.add(id)) {
-        _questXp += xp;
-        _questCoins += coins;
-        changed = true;
+    final newlyCompleted = <QuestDef>[];
+    final prevLevel = levelFromXp(_questXp);
+
+    void completeQuest(String id) {
+      if (!_completedQuests.contains(id)) {
+        final def = allQuests.firstWhere(
+          (q) => q.id == id,
+          orElse: () => allQuests.first,
+        );
+        if (_completedQuests.add(id)) {
+          _questXp += def.xp;
+          _questCoins += def.coins;
+          newlyCompleted.add(def);
+        }
       }
     }
 
-    if (_expenses.isNotEmpty) {
-      completeQuest('first_expense', 10, 5);
+    final totalCount = _expenses.length;
+    final categoriesUsed = _expenses.map((e) => e.category).toSet();
+    final now = DateTime.now();
+    final monthExpenses =
+        _expenses.where((e) => isSameMonth(e.date, now)).toList();
+    final monthSpending =
+        monthExpenses.fold<double>(0, (s, e) => s + e.amount);
+
+    // 1. Basics
+    if (totalCount >= 1) completeQuest('first_expense');
+    if (totalCount >= 5) completeQuest('track_five_expenses');
+    if (totalCount >= 10) completeQuest('track_ten_expenses');
+    if (totalCount >= 25) completeQuest('track_twenty_five');
+    if (categoriesUsed.length >= 3) completeQuest('three_categories');
+    if (categoriesUsed.length >= categories.length) {
+      completeQuest('all_categories');
     }
 
-    if (_expenses.length >= 5) {
-      completeQuest('track_five_expenses', 20, 10);
+    // 2. Budget
+    if (_monthlyBudget > 0 && _monthlyBudget != 10000.0) {
+      completeQuest('set_monthly_budget');
+    }
+    if (_budgets.isNotEmpty) completeQuest('set_category_budget');
+    if (monthExpenses.length >= 5 &&
+        _monthlyBudget > 0 &&
+        monthSpending <= _monthlyBudget) {
+      completeQuest('under_budget_month');
+    }
+    if (monthExpenses.length >= 3 &&
+        _monthlyBudget > 0 &&
+        monthSpending <= (_monthlyBudget * 0.5)) {
+      completeQuest('big_saver');
     }
 
-    if (!changed) return;
+    // 3. Streaks
+    if (_currentStreak >= 3) completeQuest('streak_3');
+    if (_currentStreak >= 7) completeQuest('streak_7');
+    if (_currentStreak >= 14) completeQuest('streak_14');
+    if (_currentStreak >= 30) completeQuest('streak_30');
+
+    if (newlyCompleted.isEmpty) return;
 
     try {
       final success = await _storage.saveQuestProgress({
@@ -254,9 +600,268 @@ class _MainPageState extends State<MainPage> {
       } else {
         setState(() {});
       }
+
+      final newLevel = levelFromXp(_questXp);
+      final didLevelUp = newLevel > prevLevel;
+
+      if (showCelebration && mounted) {
+        _showQuestCelebrationDialog(
+          newlyCompleted,
+          didLevelUp ? newLevel : null,
+        );
+      }
     } catch (error) {
       debugPrint('Failed to save quest progress: $error');
       if (mounted) _message('Quest rewards could not be saved.');
+    }
+  }
+
+  Future<void> _showQuestCelebrationDialog(
+    List<QuestDef> completed,
+    int? newLevel,
+  ) async {
+    final primary = _primaryColor;
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        contentPadding: const EdgeInsets.fromLTRB(22, 26, 22, 18),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 68,
+              height: 68,
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [gold, Color(0xFFFF9E2C)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: gold.withValues(alpha: 0.35),
+                    blurRadius: 18,
+                    offset: const Offset(0, 6),
+                  ),
+                ],
+              ),
+              child: const Icon(
+                Icons.emoji_events_rounded,
+                color: Colors.white,
+                size: 36,
+              ),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              completed.length == 1
+                  ? 'Quest Complete!'
+                  : '${completed.length} Quests Complete!',
+              style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 6),
+            const Text(
+              'Your financial adventure is growing!',
+              style: TextStyle(color: muted, fontSize: 13),
+              textAlign: TextAlign.center,
+            ),
+            if (newLevel != null) ...[
+              const SizedBox(height: 16),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 10,
+                ),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(colors: _primaryGradient),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(
+                      Icons.arrow_upward_rounded,
+                      color: Colors.white,
+                      size: 20,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'LEVEL UP! Reached Level $newLevel: ${levelTitle(newLevel)}',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12,
+                          color: Colors.white,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+            const SizedBox(height: 16),
+            Flexible(
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: completed.map((q) {
+                    return Container(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: navy,
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(color: Colors.white12),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(q.icon, color: gold, size: 22),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  q.title,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 14,
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  q.rewardText,
+                                  style: const TextStyle(
+                                    color: emerald,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const Icon(
+                            Icons.check_circle_rounded,
+                            color: emerald,
+                            size: 20,
+                          ),
+                        ],
+                      ),
+                    );
+                  }).toList(),
+                ),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor: primary,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                padding: const EdgeInsets.symmetric(vertical: 13),
+              ),
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text(
+                'Awesome!',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  double? _questProgress(QuestDef q) {
+    if (_completedQuests.contains(q.id)) return 1.0;
+    final count = _expenses.length;
+    final categoriesCount = _expenses.map((e) => e.category).toSet().length;
+    final now = DateTime.now();
+    final monthExp = _expenses.where((e) => isSameMonth(e.date, now)).length;
+
+    switch (q.id) {
+      case 'first_expense':
+        return count.clamp(0, 1) / 1;
+      case 'track_five_expenses':
+        return count.clamp(0, 5) / 5;
+      case 'track_ten_expenses':
+        return count.clamp(0, 10) / 10;
+      case 'track_twenty_five':
+        return count.clamp(0, 25) / 25;
+      case 'three_categories':
+        return categoriesCount.clamp(0, 3) / 3;
+      case 'all_categories':
+        return categoriesCount.clamp(0, categories.length) / categories.length;
+      case 'set_monthly_budget':
+        return _monthlyBudget != 10000.0 ? 1.0 : 0.0;
+      case 'set_category_budget':
+        return _budgets.isNotEmpty ? 1.0 : 0.0;
+      case 'under_budget_month':
+        return monthExp.clamp(0, 5) / 5;
+      case 'big_saver':
+        return monthExp.clamp(0, 3) / 3;
+      case 'streak_3':
+        return _currentStreak.clamp(0, 3) / 3;
+      case 'streak_7':
+        return _currentStreak.clamp(0, 7) / 7;
+      case 'streak_14':
+        return _currentStreak.clamp(0, 14) / 14;
+      case 'streak_30':
+        return _currentStreak.clamp(0, 30) / 30;
+      default:
+        return null;
+    }
+  }
+
+  String? _questProgressText(QuestDef q) {
+    if (_completedQuests.contains(q.id)) return 'Completed';
+    final count = _expenses.length;
+    final categoriesCount = _expenses.map((e) => e.category).toSet().length;
+    final now = DateTime.now();
+    final monthExp = _expenses.where((e) => isSameMonth(e.date, now)).length;
+
+    switch (q.id) {
+      case 'first_expense':
+        return '$count / 1 expense';
+      case 'track_five_expenses':
+        return '${count.clamp(0, 5)} / 5 expenses';
+      case 'track_ten_expenses':
+        return '${count.clamp(0, 10)} / 10 expenses';
+      case 'track_twenty_five':
+        return '${count.clamp(0, 25)} / 25 expenses';
+      case 'three_categories':
+        return '${categoriesCount.clamp(0, 3)} / 3 categories';
+      case 'all_categories':
+        return '${categoriesCount.clamp(0, categories.length)} / ${categories.length} categories';
+      case 'set_monthly_budget':
+        return _monthlyBudget != 10000.0 ? 'Budget set' : 'Tap Budget tab to set';
+      case 'set_category_budget':
+        return _budgets.isNotEmpty ? '${_budgets.length} set' : '0 set';
+      case 'under_budget_month':
+        return '${monthExp.clamp(0, 5)} / 5 month expenses';
+      case 'big_saver':
+        return '${monthExp.clamp(0, 3)} / 3 month expenses';
+      case 'streak_3':
+        return '$_currentStreak / 3 days';
+      case 'streak_7':
+        return '$_currentStreak / 7 days';
+      case 'streak_14':
+        return '$_currentStreak / 14 days';
+      case 'streak_30':
+        return '$_currentStreak / 30 days';
+      default:
+        return null;
     }
   }
 
@@ -336,6 +941,7 @@ class _MainPageState extends State<MainPage> {
         _message('Could not save the monthly budget.');
       } else {
         _message('Monthly budget saved.');
+        await _updateQuestProgress(showCelebration: true);
       }
     } catch (error) {
       debugPrint('Failed to save monthly budget: $error');
@@ -370,6 +976,7 @@ class _MainPageState extends State<MainPage> {
         _message('Could not save category budget.');
       } else {
         _message('$category budget saved.');
+        await _updateQuestProgress(showCelebration: true);
       }
     } catch (error) {
       debugPrint('Failed to save category budget: $error');
@@ -561,7 +1168,7 @@ class _MainPageState extends State<MainPage> {
               ),
               FilledButton(
                 style: FilledButton.styleFrom(
-                  backgroundColor: violet,
+                  backgroundColor: _primaryColor,
                   foregroundColor: Colors.white,
                 ),
                 onPressed: () => Navigator.pop(dialogContext, true),
@@ -603,7 +1210,7 @@ class _MainPageState extends State<MainPage> {
         return;
       }
 
-      await _updateQuestProgress();
+      await _updateQuestProgress(showCelebration: true);
 
       if (!mounted) return;
 
@@ -651,7 +1258,7 @@ class _MainPageState extends State<MainPage> {
       return;
     }
 
-    await _updateQuestProgress();
+    await _updateQuestProgress(showCelebration: false);
 
     if (mounted) _message('Expense deleted.');
   }
@@ -671,7 +1278,7 @@ class _MainPageState extends State<MainPage> {
           ? null
           : AppBar(title: Text(titles[_selectedTab]), backgroundColor: navy),
       body: _loading
-          ? const Center(child: CircularProgressIndicator(color: violet))
+          ? Center(child: CircularProgressIndicator(color: _primaryColor))
           : IndexedStack(
               index: _selectedTab,
               children: [
@@ -685,7 +1292,7 @@ class _MainPageState extends State<MainPage> {
       floatingActionButton: _selectedTab == 0 || _selectedTab == 1
           ? FloatingActionButton.extended(
               onPressed: () => _openExpenseForm(),
-              backgroundColor: violet,
+              backgroundColor: _primaryColor,
               foregroundColor: Colors.white,
               icon: const Icon(Icons.add_rounded),
               label: const Text('Add expense'),
@@ -693,7 +1300,7 @@ class _MainPageState extends State<MainPage> {
           : null,
       bottomNavigationBar: NavigationBar(
         backgroundColor: const Color(0xFF191C2E),
-        indicatorColor: violet.withValues(alpha: 0.25),
+        indicatorColor: _primaryColor.withValues(alpha: 0.25),
         selectedIndex: _selectedTab,
         onDestinationSelected: (index) {
           setState(() => _selectedTab = index);
@@ -767,8 +1374,8 @@ class _MainPageState extends State<MainPage> {
                 width: 46,
                 height: 46,
                 decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [violet, Color(0xFFAB8BFF)],
+                  gradient: LinearGradient(
+                    colors: _primaryGradient,
                   ),
                   borderRadius: BorderRadius.circular(15),
                 ),
@@ -821,7 +1428,7 @@ class _MainPageState extends State<MainPage> {
               borderRadius: BorderRadius.circular(26),
               boxShadow: [
                 BoxShadow(
-                  color: violet.withValues(alpha: 0.18),
+                  color: _primaryColor.withValues(alpha: 0.18),
                   blurRadius: 24,
                   offset: const Offset(0, 10),
                 ),
@@ -997,7 +1604,7 @@ class _MainPageState extends State<MainPage> {
                     valueColor: AlwaysStoppedAnimation(
                       _monthlyExpenses > _monthlyBudget
                           ? Colors.redAccent
-                          : violet,
+                          : _primaryColor,
                     ),
                   ),
                 ),
@@ -1095,13 +1702,13 @@ class _MainPageState extends State<MainPage> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text(
-                            'Your financial adventure',
-                            style: TextStyle(fontWeight: FontWeight.bold),
+                          Text(
+                            'Level ${levelFromXp(_questXp)} · ${levelTitle(levelFromXp(_questXp))}',
+                            style: const TextStyle(fontWeight: FontWeight.bold),
                           ),
                           const SizedBox(height: 5),
                           Text(
-                            'Level ${(_questXp ~/ 100) + 1} · $_questXp XP earned. Tap to view your quests.',
+                            '$_questXp XP · 🪙 $_questCoins coins${_currentStreak > 0 ? ' · 🔥 $_currentStreak-day streak' : ''}. Tap to view.',
                             style: const TextStyle(color: muted, fontSize: 12),
                           ),
                         ],
@@ -1154,7 +1761,7 @@ class _MainPageState extends State<MainPage> {
           decoration: BoxDecoration(
             color: surface,
             borderRadius: BorderRadius.circular(22),
-            border: Border.all(color: violet.withValues(alpha: 0.35)),
+            border: Border.all(color: _primaryColor.withValues(alpha: 0.35)),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -1188,7 +1795,9 @@ class _MainPageState extends State<MainPage> {
                 borderRadius: BorderRadius.circular(8),
                 backgroundColor: const Color(0xFF363A50),
                 valueColor: AlwaysStoppedAnimation(
-                  _monthlyExpenses > _monthlyBudget ? Colors.redAccent : violet,
+                  _monthlyExpenses > _monthlyBudget
+                      ? Colors.redAccent
+                      : _primaryColor,
                 ),
               ),
               const SizedBox(height: 10),
@@ -1634,96 +2243,533 @@ class _MainPageState extends State<MainPage> {
   }
 
   Widget _buildQuest() {
-    final level = (_questXp ~/ 100) + 1;
-    final xpIntoLevel = _questXp % 100;
-    final count = _expenses.length;
+    final level = levelFromXp(_questXp);
+    final curLevelMin = xpForLevel(level);
+    final nextLevelMin = level >= 7 ? curLevelMin : xpForLevel(level + 1);
+    final xpInCurrentLevel = _questXp - curLevelMin;
+    final xpNeededInCurrentLevel = nextLevelMin - curLevelMin;
+    final levelProgress = level >= 7
+        ? 1.0
+        : (xpNeededInCurrentLevel == 0
+            ? 0.0
+            : (xpInCurrentLevel / xpNeededInCurrentLevel).clamp(0.0, 1.0));
+
+    final completedCount =
+        allQuests.where((q) => _completedQuests.contains(q.id)).length;
+
+    final filteredQuests = allQuests.where((q) {
+      if (_questCategoryFilter == 'all') return true;
+      return q.category == _questCategoryFilter;
+    }).toList();
 
     return ListView(
       padding: const EdgeInsets.all(20),
       children: [
-        const Text(
-          'Money Quest',
-          style: TextStyle(fontSize: 25, fontWeight: FontWeight.bold),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Money Quest',
+                  style: TextStyle(fontSize: 25, fontWeight: FontWeight.bold),
+                ),
+                SizedBox(height: 4),
+                Text(
+                  'Level up your financial journey',
+                  style: TextStyle(color: muted, fontSize: 13),
+                ),
+              ],
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              decoration: BoxDecoration(
+                color: surface,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: gold.withValues(alpha: 0.25)),
+              ),
+              child: Row(
+                children: [
+                  const Text('🪙 ', style: TextStyle(fontSize: 16)),
+                  Text(
+                    '$_questCoins',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 15,
+                      color: gold,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
-        const SizedBox(height: 8),
-        const Text(
-          'Build better money habits one step at a time.',
-          style: TextStyle(color: muted),
-        ),
-        const SizedBox(height: 22),
+        const SizedBox(height: 20),
+
+        // ─── Level Progression Card ─────────────────────────────
         Container(
           padding: const EdgeInsets.all(22),
           decoration: BoxDecoration(
-            gradient: const LinearGradient(
-              colors: [Color(0xFF5135B8), Color(0xFF30245F)],
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: _primaryGradient,
             ),
             borderRadius: BorderRadius.circular(24),
+            boxShadow: [
+              BoxShadow(
+                color: _primaryColor.withValues(alpha: 0.25),
+                blurRadius: 20,
+                offset: const Offset(0, 8),
+              ),
+            ],
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Icon(
-                Icons.workspace_premium_rounded,
-                color: gold,
-                size: 42,
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: const Icon(
+                      Icons.workspace_premium_rounded,
+                      color: gold,
+                      size: 32,
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Level $level · ${levelTitle(level)}',
+                          style: const TextStyle(
+                            fontSize: 19,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                          ),
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          '$_questXp total XP earned',
+                          style: const TextStyle(
+                            color: lavender,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(height: 12),
-              Text(
-                'Level $level · ${level == 1 ? 'Money Explorer' : 'Money Adventurer'}',
-                style: const TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                '$_questXp XP earned · $_questCoins coins',
-                style: const TextStyle(color: lavender),
-              ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 18),
               ClipRRect(
                 borderRadius: BorderRadius.circular(12),
                 child: LinearProgressIndicator(
-                  value: xpIntoLevel / 100,
-                  minHeight: 8,
+                  value: levelProgress,
+                  minHeight: 9,
                   backgroundColor: Colors.white24,
                   valueColor: const AlwaysStoppedAnimation(gold),
                 ),
               ),
-              const SizedBox(height: 8),
-              Text(
-                '$xpIntoLevel / 100 XP toward the next level',
-                style: const TextStyle(color: lavender, fontSize: 12),
+              const SizedBox(height: 9),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    level >= 7
+                        ? 'Master level unlocked!'
+                        : '$xpInCurrentLevel / $xpNeededInCurrentLevel XP to Level ${level + 1}',
+                    style: const TextStyle(color: lavender, fontSize: 11),
+                  ),
+                  Text(
+                    level >= 7
+                        ? 'MAX'
+                        : '${(levelProgress * 100).toInt()}%',
+                    style: const TextStyle(
+                      color: gold,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 11,
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
         ),
-        const SizedBox(height: 24),
-        const Text(
-          'Available quests',
-          style: TextStyle(fontSize: 19, fontWeight: FontWeight.bold),
+        const SizedBox(height: 16),
+
+        // ─── Daily Streak Card ──────────────────────────────────
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: surface,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: const Color(0xFFFF6B35).withValues(alpha: 0.35),
+            ),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFFFF9E2C), Color(0xFFFF5722)],
+                  ),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: const Icon(
+                  Icons.local_fire_department_rounded,
+                  color: Colors.white,
+                  size: 28,
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      _currentStreak == 0
+                          ? 'Start Your Streak'
+                          : '$_currentStreak-Day Streak! 🔥',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 15,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      _currentStreak == 0
+                          ? 'Log an expense today to start a streak.'
+                          : 'Best: $_bestStreak days · Keep logging daily!',
+                      style: const TextStyle(color: muted, fontSize: 11),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
-        const SizedBox(height: 14),
-        _QuestTile(
-          title: 'First Expense',
-          description: 'Record your first transaction.',
-          reward: '+10 XP · +5 coins',
-          done: _completedQuests.contains('first_expense'),
+        const SizedBox(height: 20),
+
+        // ─── Tab Toggle (Quests vs Coin Shop) ────────────────────
+        Container(
+          padding: const EdgeInsets.all(4),
+          decoration: BoxDecoration(
+            color: surface,
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: GestureDetector(
+                  onTap: () => setState(() => _questTabSegment = 0),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    decoration: BoxDecoration(
+                      color: _questTabSegment == 0
+                          ? _primaryColor
+                          : Colors.transparent,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Center(
+                      child: Text(
+                        'Quests ($completedCount/${allQuests.length})',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 13,
+                          color: _questTabSegment == 0
+                              ? Colors.white
+                              : muted,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              Expanded(
+                child: GestureDetector(
+                  onTap: () => setState(() => _questTabSegment = 1),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    decoration: BoxDecoration(
+                      color: _questTabSegment == 1
+                          ? _primaryColor
+                          : Colors.transparent,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Center(
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Text('🪙 ', style: TextStyle(fontSize: 13)),
+                          Text(
+                            'Coin Shop',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 13,
+                              color: _questTabSegment == 1
+                                  ? Colors.white
+                                  : muted,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
-        _QuestTile(
-          title: 'Track Your Spending',
-          description: 'Record five expenses.',
-          reward: '+20 XP · +10 coins',
-          done: _completedQuests.contains('track_five_expenses'),
-          progress: count.clamp(0, 5) / 5,
-          progressText: '${count.clamp(0, 5)} / 5 expenses',
-        ),
-        const SizedBox(height: 12),
-        const Text(
-          'Rewards are saved on this device. Each quest can award its reward once.',
-          style: TextStyle(color: muted, fontSize: 12, height: 1.5),
-        ),
+        const SizedBox(height: 18),
+
+        // ─── Tab Content ─────────────────────────────────────────
+        if (_questTabSegment == 0) ...[
+          // Category filter pills
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                _buildFilterChip('All', 'all', allQuests.length),
+                const SizedBox(width: 8),
+                _buildFilterChip(
+                  'Basics',
+                  'basics',
+                  allQuests.where((q) => q.category == 'basics').length,
+                ),
+                const SizedBox(width: 8),
+                _buildFilterChip(
+                  'Budget',
+                  'budget',
+                  allQuests.where((q) => q.category == 'budget').length,
+                ),
+                const SizedBox(width: 8),
+                _buildFilterChip(
+                  'Streaks',
+                  'streak',
+                  allQuests.where((q) => q.category == 'streak').length,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 14),
+
+          ...filteredQuests.map(
+            (quest) => _QuestTile(
+              title: quest.title,
+              description: quest.description,
+              reward: quest.rewardText,
+              done: _completedQuests.contains(quest.id),
+              icon: quest.icon,
+              progress: _questProgress(quest),
+              progressText: _questProgressText(quest),
+            ),
+          ),
+          const SizedBox(height: 12),
+          const Text(
+            'Complete quests to earn XP & coins. Coins can be spent in the Coin Shop to unlock themes!',
+            style: TextStyle(color: muted, fontSize: 12, height: 1.5),
+            textAlign: TextAlign.center,
+          ),
+        ] else ...[
+          // ─── Coin Shop View ────────────────────────────────────
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: surface,
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: gold.withValues(alpha: 0.2)),
+            ),
+            child: const Row(
+              children: [
+                Icon(
+                  Icons.palette_rounded,
+                  color: gold,
+                  size: 28,
+                ),
+                SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Theme Collection',
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      SizedBox(height: 2),
+                      Text(
+                        'Unlock themes to personalize your entire app experience.',
+                        style: TextStyle(color: muted, fontSize: 11),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          ...shopThemes.map((theme) {
+            final isUnlocked = _unlockedThemes.contains(theme.id);
+            final isActive = widget.currentTheme.id == theme.id;
+
+            return Container(
+              margin: const EdgeInsets.only(bottom: 12),
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: surface,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                  color: isActive
+                      ? theme.color
+                      : (isUnlocked
+                          ? Colors.white24
+                          : Colors.white10),
+                  width: isActive ? 1.8 : 1.0,
+                ),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 48,
+                    height: 48,
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(colors: theme.gradient),
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: Center(
+                      child: Text(
+                        theme.emoji,
+                        style: const TextStyle(fontSize: 22),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          theme.name,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 15,
+                          ),
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          theme.cost == 0
+                              ? 'Default Theme'
+                              : '${theme.cost} Coins',
+                          style: TextStyle(
+                            color: theme.cost == 0 ? muted : gold,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (isActive)
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 8,
+                      ),
+                      decoration: BoxDecoration(
+                        color: theme.color.withValues(alpha: 0.18),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: theme.color),
+                      ),
+                      child: Text(
+                        'Active',
+                        style: TextStyle(
+                          color: theme.color,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12,
+                        ),
+                      ),
+                    )
+                  else if (isUnlocked)
+                    FilledButton(
+                      style: FilledButton.styleFrom(
+                        backgroundColor: surface,
+                        foregroundColor: Colors.white,
+                        side: const BorderSide(color: Colors.white24),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 8,
+                        ),
+                      ),
+                      onPressed: () => _buyOrEquipTheme(theme),
+                      child: const Text('Equip', style: TextStyle(fontSize: 12)),
+                    )
+                  else
+                    FilledButton.icon(
+                      style: FilledButton.styleFrom(
+                        backgroundColor: theme.color,
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 8,
+                        ),
+                      ),
+                      onPressed: () => _buyOrEquipTheme(theme),
+                      icon: const Text('🪙', style: TextStyle(fontSize: 12)),
+                      label: Text(
+                        '${theme.cost}',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            );
+          }),
+        ],
       ],
+    );
+  }
+
+  Widget _buildFilterChip(String label, String categoryKey, int count) {
+    final isSelected = _questCategoryFilter == categoryKey;
+    return GestureDetector(
+      onTap: () => setState(() => _questCategoryFilter = categoryKey),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        decoration: BoxDecoration(
+          color: isSelected ? _primaryColor : surface,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: isSelected ? _primaryColor : Colors.white10,
+          ),
+        ),
+        child: Text(
+          '$label ($count)',
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.bold,
+            color: isSelected ? Colors.white : muted,
+          ),
+        ),
+      ),
     );
   }
 }
@@ -1815,7 +2861,9 @@ class _MonthlyBudgetDialogState extends State<_MonthlyBudgetDialog> {
           child: const Text('Cancel'),
         ),
         FilledButton(
-          style: FilledButton.styleFrom(backgroundColor: violet),
+          style: FilledButton.styleFrom(
+            backgroundColor: Theme.of(context).colorScheme.primary,
+          ),
           onPressed: _save,
           child: const Text('Save budget'),
         ),
@@ -1918,7 +2966,9 @@ class _CategoryBudgetDialogState extends State<_CategoryBudgetDialog> {
           child: const Text('Cancel'),
         ),
         FilledButton(
-          style: FilledButton.styleFrom(backgroundColor: violet),
+          style: FilledButton.styleFrom(
+            backgroundColor: Theme.of(context).colorScheme.primary,
+          ),
           onPressed: _save,
           child: const Text('Save budget'),
         ),
@@ -1978,8 +3028,8 @@ class _ExpenseFormState extends State<ExpenseForm> {
       lastDate: DateTime.now().add(const Duration(days: 3650)),
       builder: (context, child) => Theme(
         data: Theme.of(context).copyWith(
-          colorScheme: const ColorScheme.dark(
-            primary: violet,
+          colorScheme: ColorScheme.dark(
+            primary: Theme.of(context).colorScheme.primary,
             surface: surface,
           ),
         ),
@@ -2148,7 +3198,7 @@ class _ExpenseFormState extends State<ExpenseForm> {
                 child: FilledButton.icon(
                   onPressed: _submit,
                   style: FilledButton.styleFrom(
-                    backgroundColor: violet,
+                    backgroundColor: Theme.of(context).colorScheme.primary,
                     foregroundColor: Colors.white,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(16),
@@ -2396,6 +3446,7 @@ class _QuestTile extends StatelessWidget {
   final String description;
   final String reward;
   final bool done;
+  final IconData icon;
   final double? progress;
   final String? progressText;
 
@@ -2404,6 +3455,7 @@ class _QuestTile extends StatelessWidget {
     required this.description,
     required this.reward,
     required this.done,
+    required this.icon,
     this.progress,
     this.progressText,
   });
@@ -2416,18 +3468,29 @@ class _QuestTile extends StatelessWidget {
       decoration: BoxDecoration(
         color: surface,
         borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: done ? emerald.withValues(alpha: 0.3) : Colors.white10,
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Icon(
-                done ? Icons.check_circle_rounded : Icons.flag_rounded,
-                color: done ? emerald : gold,
-                size: 25,
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  color: (done ? emerald : gold).withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(
+                  done ? Icons.check_circle_rounded : icon,
+                  color: done ? emerald : gold,
+                  size: 24,
+                ),
               ),
-              const SizedBox(width: 10),
+              const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -2436,7 +3499,7 @@ class _QuestTile extends StatelessWidget {
                       title,
                       style: const TextStyle(fontWeight: FontWeight.bold),
                     ),
-                    const SizedBox(height: 4),
+                    const SizedBox(height: 3),
                     Text(
                       description,
                       style: const TextStyle(color: muted, fontSize: 12),
@@ -2445,24 +3508,36 @@ class _QuestTile extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 8),
-              Text(
-                done ? 'Complete' : reward,
-                style: TextStyle(
-                  color: done ? emerald : gold,
-                  fontSize: 11,
-                  fontWeight: FontWeight.bold,
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 5,
+                ),
+                decoration: BoxDecoration(
+                  color: (done ? emerald : gold).withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Text(
+                  done ? 'Completed' : reward,
+                  style: TextStyle(
+                    color: done ? emerald : gold,
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ),
             ],
           ),
-          if (progress != null) ...[
+          if (progress != null && !done) ...[
             const SizedBox(height: 14),
-            LinearProgressIndicator(
-              value: progress,
-              backgroundColor: const Color(0xFF363A50),
-              color: gold,
-              minHeight: 6,
+            ClipRRect(
               borderRadius: BorderRadius.circular(8),
+              child: LinearProgressIndicator(
+                value: progress,
+                backgroundColor: const Color(0xFF363A50),
+                color: gold,
+                minHeight: 6,
+              ),
             ),
             const SizedBox(height: 6),
             Text(

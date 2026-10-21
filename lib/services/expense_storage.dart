@@ -10,6 +10,8 @@ class ExpenseStorage {
   static const String _monthlyBudgetStorageKey =
       'spendwise_overall_monthly_budget';
   static const String _questStorageKey = 'spendwise_quest_progress';
+  static const String _streakStorageKey = 'spendwise_streak_data';
+  static const String _shopStorageKey = 'spendwise_shop_data';
 
   Future<List<Expense>> loadExpenses() async {
     final prefs = await SharedPreferences.getInstance();
@@ -102,5 +104,51 @@ class ExpenseStorage {
   Future<bool> saveQuestProgress(Map<String, dynamic> progress) async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.setString(_questStorageKey, jsonEncode(progress));
+  }
+
+  Future<Map<String, dynamic>> loadStreakData() async {
+    final prefs = await SharedPreferences.getInstance();
+    final storedData = prefs.getString(_streakStorageKey);
+
+    if (storedData == null || storedData.isEmpty) {
+      return {'currentStreak': 0, 'bestStreak': 0, 'lastActiveDate': ''};
+    }
+
+    try {
+      final decoded = jsonDecode(storedData);
+      if (decoded is Map<String, dynamic>) {
+        return decoded;
+      }
+    } catch (_) {}
+
+    return {'currentStreak': 0, 'bestStreak': 0, 'lastActiveDate': ''};
+  }
+
+  Future<bool> saveStreakData(Map<String, dynamic> streakData) async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.setString(_streakStorageKey, jsonEncode(streakData));
+  }
+
+  Future<Map<String, dynamic>> loadShopData() async {
+    final prefs = await SharedPreferences.getInstance();
+    final storedData = prefs.getString(_shopStorageKey);
+
+    if (storedData == null || storedData.isEmpty) {
+      return {'selectedTheme': 'default', 'unlockedThemes': ['default']};
+    }
+
+    try {
+      final decoded = jsonDecode(storedData);
+      if (decoded is Map<String, dynamic>) {
+        return decoded;
+      }
+    } catch (_) {}
+
+    return {'selectedTheme': 'default', 'unlockedThemes': ['default']};
+  }
+
+  Future<bool> saveShopData(Map<String, dynamic> shopData) async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.setString(_shopStorageKey, jsonEncode(shopData));
   }
 }
