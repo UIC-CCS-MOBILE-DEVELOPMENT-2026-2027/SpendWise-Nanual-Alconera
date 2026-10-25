@@ -13,6 +13,11 @@ class WalletPanel extends StatefulWidget {
   final Wallet wallet;
   final List<Expense> expenses;
   final Future<bool> Function(Wallet) onSave;
+  final Future<bool> Function({
+    required Wallet wallet,
+    required List<Expense> expenses,
+  })
+  onUpdateAccountData;
   final Color primaryColor;
 
   const WalletPanel({
@@ -20,6 +25,7 @@ class WalletPanel extends StatefulWidget {
     required this.wallet,
     required this.expenses,
     required this.onSave,
+    required this.onUpdateAccountData,
     required this.primaryColor,
   });
 
@@ -57,70 +63,239 @@ class _WalletPanelState extends State<WalletPanel> {
     );
   }
 
+  void _message(String message) {
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(content: Text(message), behavior: SnackBarBehavior.floating),
+      );
+  }
+
   Future<void> _persist(Wallet wallet) async {
     if (_saving) return;
 
     setState(() => _saving = true);
 
     var success = false;
+
     try {
       success = await widget.onSave(wallet);
-    } catch (_) {
-      success = false;
+    } catch (error, stackTrace) {
+      debugPrint('Failed to save wallet: $error');
+      debugPrintStack(stackTrace: stackTrace);
     }
 
     if (!mounted) return;
 
     setState(() => _saving = false);
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          success
-              ? 'Changes saved successfully.'
-              : 'Could not save changes. Please try again.',
-        ),
-        behavior: SnackBarBehavior.floating,
-      ),
+    _message(
+      success
+          ? 'Changes saved successfully.'
+          : 'Could not save changes. Please try again.',
     );
   }
 
   Future<void> _account([String? account]) async {
+    if (_saving) return;
+
+    final accountsBeforeDialog = _accounts;
+
+    if (account != null && !accountsBeforeDialog.contains(account)) {
+      _message('This account could not be found. Refresh and try again.');
+      return;
+    }
+
     final result = await showDialog<MapEntry<String, double>>(
       context: context,
       builder: (_) => _AccountDialog(
         account: account,
         wallet: widget.wallet,
-        existingAccounts: _accounts,
+        existingAccounts: accountsBeforeDialog,
         primaryColor: widget.primaryColor,
       ),
     );
 
     if (result == null || !mounted) return;
 
+    final newName = result.key.trim();
+    final enteredOpeningBalance = result.value;
+
+    if (newName.isEmpty || newName.length > 40) {
+      _message('Use an account name of 1–40 characters.');
+      return;
+    }
+
+    final duplicate = accountsBeforeDialog.any(
+      (name) => name.toLowerCase() == newName.toLowerCase() && name != account,
+    );
+
+    if (duplicate) {
+      _message('An account with that name already exists.');
+      return;
+    }
+
+    // Create a new account.
+    if (account == null) {
+      final updatedBalances = Map<String, double>.from(
+        widget.wallet.openingBalances,
+      );
+
+      updatedBalances[newName] = enteredOpeningBalance;
+
+      await _persist(
+        Wallet(
+          openingBalances: updatedBalances,
+          transfers: widget.wallet.transfers,
+        ),
+      );
+
+      return;
+    }
+
+    // Preserve the existing opening balance if the dialog's balance
+    // was not changed. This is especially useful for accounts whose
+    // opening balance was not previously stored explicitly.
+    final previousOpeningBalance =
+        widget.wallet.openingBalances[account] ?? 0.0;
+
+    final updatedOpeningBalances = Map<String, double>.from(
+      widget.wallet.openingBalances,
+    );
+
+    updatedOpeningBalances.remove(account);
+    updatedOpeningBalances[newName] = enteredOpeningBalance;
+
+    final updatedTransfers = widget.wallet.transfers.map((transfer) {
+      return Transfer(
+        id: transfer.id,
+        from: transfer.from == account ? newName : transfer.from,
+        to: transfer.to == account ? newName : transfer.to,
+        amount: transfer.amount,
+        date: transfer.date,
+      );
+    }).toList();
+
+    final updatedExpenses = widget.expenses.map((expense) {
+      return expense.account == account
+          ? expense.copyWith(account: newName)
+          : expense;
+    }).toList();
+
+    final updatedWallet = Wallet(
+      openingBalances: updatedOpeningBalances,
+      transfers: updatedTransfers,
+    );
+
+    setState(() => _saving = true);
+
+    var success = false;
+
+    try {
+      success = await widget.onUpdateAccountData(
+        wallet: updatedWallet,
+        expenses: updatedExpenses,
+      );
+    } catch (error, stackTrace) {
+      debugPrint('Failed to update account data: $error');
+      debugPrintStack(stackTrace: stackTrace);
+    }
+
+    if (!mounted) return;
+
+    setState(() => _saving = false);
+
+    _message(
+      success
+          ? (newName == account
+                ? 'Account updated successfully.'
+                : 'Account renamed successfully.')
+          : 'Could not save the account changes. Please try again.',
+    );
+
+    // Keep the local variable intentionally referenced for clarity:
+    // accounts without an explicit opening balance default to zero.
+    assert(previousOpeningBalance.isFinite);
+  }
+
+  Future<void> _deleteAccount(String account) async {
+    if (_saving) return;
+
+    final hasExpenses = widget.expenses.any(
+      (expense) => expense.account == account,
+    );
+
+    final hasTransfers = widget.wallet.transfers.any(
+      (transfer) => transfer.from == account || transfer.to == account,
+    );
+
+    final balance = widget.wallet.balance(account, widget.expenses);
+    final hasNonzeroBalance = balance.abs() > 0.005;
+
+    // Keep financial records safe. Rename the account instead if
+    // it has recorded activity or money remaining.
+    if (hasExpenses || hasTransfers || hasNonzeroBalance) {
+      final reasons = <String>[
+        if (hasExpenses) 'recorded expenses',
+        if (hasTransfers) 'transfer history',
+        if (hasNonzeroBalance) 'a nonzero balance',
+      ];
+
+      _message(
+        'Cannot delete this account because it has '
+        '${reasons.join(', ')}. Rename it if you want a different name.',
+      );
+
+      return;
+    }
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Delete account?'),
+        content: Text('Delete "$account"? This action cannot be undone.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            style: FilledButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Delete account'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    final updatedOpeningBalances = Map<String, double>.from(
+      widget.wallet.openingBalances,
+    )..remove(account);
+
     await _persist(
       Wallet(
-        openingBalances: {
-          ...widget.wallet.openingBalances,
-          result.key: result.value,
-        },
+        openingBalances: updatedOpeningBalances,
         transfers: widget.wallet.transfers,
       ),
     );
   }
 
   Future<void> _transfer() async {
+    if (_saving) return;
+
     final availableAccounts = _accounts.isEmpty
         ? <String>['Cash on Hand']
         : _accounts;
 
     if (availableAccounts.length < 2) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Add at least two accounts to make a transfer.'),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
+      _message('Add at least two accounts to make a transfer.');
       return;
     }
 
@@ -145,21 +320,27 @@ class _WalletPanelState extends State<WalletPanel> {
   }
 
   Future<void> _deleteTransfer(Transfer transfer) async {
+    if (_saving) return;
+
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (dialogContext) => AlertDialog(
         title: const Text('Delete transfer?'),
         content: const Text(
-          'This removes the transfer and reverses its effect on the '
-          'balances of the two accounts.',
+          'This removes the transfer and reverses its effect on '
+          'the balances of the two accounts.',
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context, false),
+            onPressed: () => Navigator.pop(dialogContext, false),
             child: const Text('Keep transfer'),
           ),
           FilledButton(
-            onPressed: () => Navigator.pop(context, true),
+            onPressed: () => Navigator.pop(dialogContext, true),
+            style: FilledButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+            ),
             child: const Text('Delete transfer'),
           ),
         ],
@@ -183,11 +364,13 @@ class _WalletPanelState extends State<WalletPanel> {
 
     if (value.contains('cash')) return Icons.payments_rounded;
     if (value.contains('bank')) return Icons.account_balance_rounded;
+
     if (value.contains('gcash') ||
         value.contains('maya') ||
         value.contains('wallet')) {
       return Icons.account_balance_wallet_rounded;
     }
+
     if (value.contains('savings')) return Icons.savings_rounded;
     if (value.contains('credit')) return Icons.credit_card_rounded;
 
@@ -253,7 +436,8 @@ class _WalletPanelState extends State<WalletPanel> {
                     ),
                   ),
                   Text(
-                    '${accounts.length} ${accounts.length == 1 ? 'account' : 'accounts'} connected',
+                    '${accounts.length} '
+                    '${accounts.length == 1 ? 'account' : 'accounts'} connected',
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: theme.colorScheme.onSurfaceVariant,
                     ),
@@ -270,7 +454,7 @@ class _WalletPanelState extends State<WalletPanel> {
         ),
         const SizedBox(height: 18),
 
-        // Total balance card.
+        // Total balance.
         Container(
           width: double.infinity,
           padding: const EdgeInsets.all(22),
@@ -444,11 +628,11 @@ class _WalletPanelState extends State<WalletPanel> {
                 accounts[i],
               ),
               onTap: _saving ? null : () => _account(accounts[i]),
+              onDelete: _saving ? null : () => _deleteAccount(accounts[i]),
             ),
 
         const SizedBox(height: 12),
 
-        // Actions.
         Row(
           children: [
             Expanded(
@@ -731,6 +915,7 @@ class _AccountCard extends StatelessWidget {
   final Color color;
   final bool openingBalanceSet;
   final VoidCallback? onTap;
+  final VoidCallback? onDelete;
 
   const _AccountCard({
     required this.name,
@@ -739,6 +924,7 @@ class _AccountCard extends StatelessWidget {
     required this.color,
     required this.openingBalanceSet,
     required this.onTap,
+    required this.onDelete,
   });
 
   @override
@@ -753,69 +939,86 @@ class _AccountCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(19),
         side: BorderSide(color: Colors.white.withValues(alpha: 0.07)),
       ),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(19),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Row(
-            children: [
-              Container(
-                width: 52,
-                height: 52,
-                decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: Icon(icon, color: color, size: 25),
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(15),
               ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w800,
-                      ),
+              child: Icon(icon, color: color, size: 24),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    name,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w800,
                     ),
-                    const SizedBox(height: 5),
-                    Text(
-                      openingBalanceSet
-                          ? 'Tracked account'
-                          : 'Opening balance not set',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: openingBalanceSet
-                            ? theme.colorScheme.onSurfaceVariant
-                            : const Color(0xFFFFC857),
-                      ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    openingBalanceSet
+                        ? 'Tracked account'
+                        : 'Opening balance not set',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: openingBalanceSet
+                          ? theme.colorScheme.onSurfaceVariant
+                          : const Color(0xFFFFC857),
                     ),
-                    const SizedBox(height: 9),
-                    Text(
-                      _money(balance),
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: -0.3,
-                      ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    _money(balance),
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: -0.3,
                     ),
-                  ],
-                ),
+                  ),
+                  const SizedBox(height: 12),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      OutlinedButton.icon(
+                        onPressed: onTap,
+                        icon: const Icon(Icons.edit_outlined, size: 16),
+                        label: const Text('Edit'),
+                        style: OutlinedButton.styleFrom(
+                          minimumSize: const Size(0, 36),
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                        ),
+                      ),
+                      OutlinedButton.icon(
+                        onPressed: onDelete,
+                        icon: const Icon(
+                          Icons.delete_outline_rounded,
+                          size: 16,
+                        ),
+                        label: const Text('Delete'),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Colors.redAccent,
+                          side: const BorderSide(color: Colors.redAccent),
+                          minimumSize: const Size(0, 36),
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
               ),
-              const SizedBox(width: 8),
-              Container(
-                width: 36,
-                height: 36,
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.05),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: const Icon(Icons.edit_outlined, size: 18),
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
@@ -862,100 +1065,102 @@ class _AccountDialogState extends State<_AccountDialog> {
     final primary = widget.primaryColor;
 
     return AlertDialog(
-      title: Text(
-        widget.account == null ? 'Create account' : 'Account balance',
-      ),
-      content: SingleChildScrollView(
-        child: Form(
-          key: _form,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                widget.account == null
-                    ? 'Give your account a name and set its starting balance.'
-                    : 'Update the starting balance for ${widget.account}.',
-                style: Theme.of(context).textTheme.bodyMedium,
+      scrollable: true,
+      title: Text(widget.account == null ? 'Create account' : 'Edit account'),
+      content: Form(
+        key: _form,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              widget.account == null
+                  ? 'Give your account a name and set its starting balance.'
+                  : 'Update the account name or its starting balance.',
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+            const SizedBox(height: 18),
+            TextFormField(
+              controller: _name,
+              textCapitalization: TextCapitalization.words,
+              textInputAction: TextInputAction.next,
+              maxLength: 40,
+              decoration: const InputDecoration(
+                labelText: 'Account name',
+                hintText: 'e.g. Cash on Hand, GCash, Savings',
+                prefixIcon: Icon(Icons.account_balance_wallet_outlined),
+                border: OutlineInputBorder(),
               ),
-              const SizedBox(height: 18),
-              TextFormField(
-                controller: _name,
-                enabled: widget.account == null,
-                textCapitalization: TextCapitalization.words,
-                decoration: const InputDecoration(
-                  labelText: 'Account name',
-                  hintText: 'e.g. Cash on Hand, GCash, Savings',
-                  prefixIcon: Icon(Icons.account_balance_wallet_outlined),
-                  border: OutlineInputBorder(),
-                ),
-                validator: (value) {
-                  final name = value?.trim() ?? '';
+              validator: (value) {
+                final name = value?.trim() ?? '';
 
-                  if (name.isEmpty || name.length > 40) {
-                    return 'Use a name of 1–40 characters.';
-                  }
+                if (name.isEmpty) {
+                  return 'Enter an account name.';
+                }
 
-                  if (widget.account == null &&
-                      widget.existingAccounts.any(
-                        (key) => key.toLowerCase() == name.toLowerCase(),
-                      )) {
-                    return 'This account already exists.';
-                  }
+                final duplicate = widget.existingAccounts.any(
+                  (existing) =>
+                      existing.toLowerCase() == name.toLowerCase() &&
+                      existing != widget.account,
+                );
 
-                  return null;
-                },
+                if (duplicate) {
+                  return 'This account already exists.';
+                }
+
+                return null;
+              },
+            ),
+            const SizedBox(height: 14),
+            TextFormField(
+              controller: _amount,
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
               ),
-              const SizedBox(height: 14),
-              TextFormField(
-                controller: _amount,
-                keyboardType: const TextInputType.numberWithOptions(
-                  decimal: true,
-                ),
-                decoration: const InputDecoration(
-                  labelText: 'Opening balance',
-                  prefixText: '₱ ',
-                  prefixIcon: Icon(Icons.payments_outlined),
-                  border: OutlineInputBorder(),
-                ),
-                validator: (value) {
-                  final amount = double.tryParse(value ?? '');
-
-                  if (amount == null ||
-                      !amount.isFinite ||
-                      amount < 0 ||
-                      amount > 1000000000) {
-                    return 'Enter an amount from 0 to 1 billion.';
-                  }
-
-                  return null;
-                },
+              textInputAction: TextInputAction.done,
+              decoration: const InputDecoration(
+                labelText: 'Opening balance',
+                prefixText: '₱ ',
+                prefixIcon: Icon(Icons.payments_outlined),
+                border: OutlineInputBorder(),
               ),
-              const SizedBox(height: 14),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: primary.withValues(alpha: 0.09),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Icon(Icons.info_outline_rounded, size: 18, color: primary),
-                    const SizedBox(width: 8),
-                    const Expanded(
-                      child: Text(
-                        'Enter the balance before the expenses and '
-                        'transfers recorded in SpendWise. This is not '
-                        'income or an expense.',
-                        style: TextStyle(height: 1.45),
-                      ),
+              validator: (value) {
+                final amount = double.tryParse(value?.trim() ?? '');
+
+                if (amount == null ||
+                    !amount.isFinite ||
+                    amount < 0 ||
+                    amount > 1000000000) {
+                  return 'Enter an amount from 0 to 1 billion.';
+                }
+
+                return null;
+              },
+            ),
+            const SizedBox(height: 14),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: primary.withValues(alpha: 0.09),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(Icons.info_outline_rounded, size: 18, color: primary),
+                  const SizedBox(width: 8),
+                  const Expanded(
+                    child: Text(
+                      'Enter the balance before the expenses and '
+                      'transfers recorded in SpendWise. This is not '
+                      'income or an expense.',
+                      style: TextStyle(height: 1.45),
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
       actions: [
@@ -967,13 +1172,15 @@ class _AccountDialogState extends State<_AccountDialog> {
           onPressed: () {
             if (!_form.currentState!.validate()) return;
 
-            Navigator.pop(
-              context,
-              MapEntry(_name.text.trim(), double.parse(_amount.text.trim())),
-            );
+            final name = _name.text.trim();
+            final amount = double.parse(_amount.text.trim());
+
+            Navigator.pop(context, MapEntry<String, double>(name, amount));
           },
           icon: const Icon(Icons.check_rounded),
-          label: const Text('Save account'),
+          label: Text(
+            widget.account == null ? 'Create account' : 'Save changes',
+          ),
           style: FilledButton.styleFrom(backgroundColor: primary),
         ),
       ],
@@ -1022,164 +1229,165 @@ class _TransferDialogState extends State<_TransferDialog> {
     final primary = widget.primaryColor;
 
     return AlertDialog(
+      scrollable: true,
       title: const Text('Transfer money'),
-      content: SingleChildScrollView(
-        child: Form(
-          key: _form,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Move money between your accounts without recording '
-                'an expense.',
-                style: theme.textTheme.bodyMedium,
+      content: Form(
+        key: _form,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Move money between your accounts without recording '
+              'an expense.',
+              style: theme.textTheme.bodyMedium,
+            ),
+            const SizedBox(height: 18),
+            DropdownButtonFormField<String>(
+              initialValue: _from,
+              isExpanded: true,
+              decoration: const InputDecoration(
+                labelText: 'From account',
+                prefixIcon: Icon(Icons.call_made_rounded),
+                border: OutlineInputBorder(),
               ),
-              const SizedBox(height: 18),
-              DropdownButtonFormField<String>(
-                initialValue: _from,
-                isExpanded: true,
-                decoration: const InputDecoration(
-                  labelText: 'From account',
-                  prefixIcon: Icon(Icons.call_made_rounded),
-                  border: OutlineInputBorder(),
-                ),
-                items: widget.accounts
-                    .map(
-                      (account) => DropdownMenuItem(
-                        value: account,
-                        child: Text(account, overflow: TextOverflow.ellipsis),
-                      ),
-                    )
-                    .toList(),
-                onChanged: (value) {
-                  if (value == null) return;
+              items: widget.accounts
+                  .map(
+                    (account) => DropdownMenuItem(
+                      value: account,
+                      child: Text(account, overflow: TextOverflow.ellipsis),
+                    ),
+                  )
+                  .toList(),
+              onChanged: (value) {
+                if (value == null) return;
 
-                  setState(() {
-                    _from = value;
-                    if (_from == _to) {
-                      _to = widget.accounts.firstWhere(
-                        (account) => account != _from,
-                        orElse: () => _from,
-                      );
-                    }
-                  });
-                },
-              ),
-              const SizedBox(height: 12),
-              Center(
-                child: Container(
-                  width: 36,
-                  height: 36,
-                  decoration: BoxDecoration(
-                    color: primary.withValues(alpha: 0.13),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(Icons.south_rounded, color: primary),
-                ),
-              ),
-              const SizedBox(height: 12),
-              DropdownButtonFormField<String>(
-                initialValue: _to,
-                isExpanded: true,
-                decoration: const InputDecoration(
-                  labelText: 'To account',
-                  prefixIcon: Icon(Icons.call_received_rounded),
-                  border: OutlineInputBorder(),
-                ),
-                items: widget.accounts
-                    .map(
-                      (account) => DropdownMenuItem(
-                        value: account,
-                        child: Text(account, overflow: TextOverflow.ellipsis),
-                      ),
-                    )
-                    .toList(),
-                onChanged: (value) {
-                  if (value != null) setState(() => _to = value);
-                },
-                validator: (_) {
+                setState(() {
+                  _from = value;
+
                   if (_from == _to) {
-                    return 'Choose a different destination.';
+                    _to = widget.accounts.firstWhere(
+                      (account) => account != _from,
+                      orElse: () => _from,
+                    );
                   }
-                  return null;
-                },
-              ),
-              const SizedBox(height: 16),
-              TextFormField(
-                controller: _amount,
-                keyboardType: const TextInputType.numberWithOptions(
-                  decimal: true,
-                ),
-                decoration: const InputDecoration(
-                  labelText: 'Transfer amount',
-                  prefixText: '₱ ',
-                  prefixIcon: Icon(Icons.payments_outlined),
-                  border: OutlineInputBorder(),
-                ),
-                validator: (value) {
-                  final amount = double.tryParse(value ?? '');
-
-                  if (amount == null ||
-                      !amount.isFinite ||
-                      amount <= 0 ||
-                      amount > 1000000000) {
-                    return 'Enter a valid positive amount.';
-                  }
-
-                  if (amount > _availableBalance) {
-                    return 'Insufficient funds in this account.';
-                  }
-
-                  return null;
-                },
-              ),
-              const SizedBox(height: 12),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(12),
+                });
+              },
+            ),
+            const SizedBox(height: 12),
+            Center(
+              child: Container(
+                width: 36,
+                height: 36,
                 decoration: BoxDecoration(
-                  color: _emerald.withValues(alpha: 0.09),
-                  borderRadius: BorderRadius.circular(12),
+                  color: primary.withValues(alpha: 0.13),
+                  shape: BoxShape.circle,
                 ),
-                child: Row(
-                  children: [
-                    const Icon(
-                      Icons.account_balance_wallet_outlined,
-                      size: 19,
-                      color: _emerald,
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'Available balance',
-                            style: TextStyle(fontSize: 12),
-                          ),
-                          const SizedBox(height: 3),
-                          Text(
-                            _money(_availableBalance),
-                            style: const TextStyle(fontWeight: FontWeight.w800),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
+                child: Icon(Icons.south_rounded, color: primary),
               ),
-              const SizedBox(height: 12),
-              Text(
-                'For a cash withdrawal, transfer to Cash on Hand. '
-                'Record any withdrawal fee separately as an expense.',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                  height: 1.45,
-                ),
+            ),
+            const SizedBox(height: 12),
+            DropdownButtonFormField<String>(
+              initialValue: _to,
+              isExpanded: true,
+              decoration: const InputDecoration(
+                labelText: 'To account',
+                prefixIcon: Icon(Icons.call_received_rounded),
+                border: OutlineInputBorder(),
               ),
-            ],
-          ),
+              items: widget.accounts
+                  .map(
+                    (account) => DropdownMenuItem(
+                      value: account,
+                      child: Text(account, overflow: TextOverflow.ellipsis),
+                    ),
+                  )
+                  .toList(),
+              onChanged: (value) {
+                if (value != null) setState(() => _to = value);
+              },
+              validator: (_) {
+                if (_from == _to) {
+                  return 'Choose a different destination.';
+                }
+
+                return null;
+              },
+            ),
+            const SizedBox(height: 16),
+            TextFormField(
+              controller: _amount,
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
+              decoration: const InputDecoration(
+                labelText: 'Transfer amount',
+                prefixText: '₱ ',
+                prefixIcon: Icon(Icons.payments_outlined),
+                border: OutlineInputBorder(),
+              ),
+              validator: (value) {
+                final amount = double.tryParse(value?.trim() ?? '');
+
+                if (amount == null ||
+                    !amount.isFinite ||
+                    amount <= 0 ||
+                    amount > 1000000000) {
+                  return 'Enter a valid positive amount.';
+                }
+
+                if (amount > _availableBalance) {
+                  return 'Insufficient funds in this account.';
+                }
+
+                return null;
+              },
+            ),
+            const SizedBox(height: 12),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: _emerald.withValues(alpha: 0.09),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.account_balance_wallet_outlined,
+                    size: 19,
+                    color: _emerald,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Available balance',
+                          style: TextStyle(fontSize: 12),
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          _money(_availableBalance),
+                          style: const TextStyle(fontWeight: FontWeight.w800),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'For a cash withdrawal, transfer to Cash on Hand. '
+              'Record any withdrawal fee separately as an expense.',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+                height: 1.45,
+              ),
+            ),
+          ],
         ),
       ),
       actions: [

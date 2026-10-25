@@ -1,0 +1,30 @@
+00:00 +0: loading C:/Users/JeeBruce/Desktop/Projects/spendwise/test/widget_test.dart
+00:00 +0: Monthly budget saves on a small phone with the keyboard open
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test:
+Expected: <15000>
+  Actual: <10000.0>
+
+When the exception was thrown, this was the stack:
+#4      main.<anonymous closure> (file:///C:/Users/JeeBruce/Desktop/Projects/spendwise/test/widget_test.dart:147:5)
+<asynchronous suspension>
+#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+This was caught by the test expectation on the following line:
+  file:///C:/Users/JeeBruce/Desktop/Projects/spendwise/test/widget_test.dart line 147
+The test description was:
+  Monthly budget saves on a small phone with the keyboard open
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:02 +0 -1: Monthly budget saves on a small phone with the keyboard open [E]
+  Test failed. See exception logs above.
+  The test description was: Monthly budget saves on a small phone with the keyboard open
+  
+00:02 +0 -1: Some tests failed.
+
+Failing tests:
+  C:/Users/JeeBruce/Desktop/Projects/spendwise/test/widget_test.dart: Monthly budget saves on a small phone with the keyboard open

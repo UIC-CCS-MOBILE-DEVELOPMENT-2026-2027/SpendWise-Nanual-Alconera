@@ -644,11 +644,66 @@ class _MainPageState extends State<MainPage> {
 
   Future<bool> _saveWallet(Wallet wallet) async {
     try {
-      if (!await _storage.saveWallet(wallet)) throw StateError('Save failed');
-      if (mounted) setState(() => _wallet = wallet);
+      if (!await _storage.saveWallet(wallet)) {
+        throw StateError('Save failed');
+      }
+
+      if (mounted) {
+        setState(() => _wallet = wallet);
+      }
+
       return true;
-    } catch (_) {
-      if (mounted) _message('Could not save accounts. Please try again.');
+    } catch (error, stackTrace) {
+      debugPrint('Failed to save accounts: $error');
+      debugPrintStack(stackTrace: stackTrace);
+
+      if (mounted) {
+        _message('Could not save accounts. Please try again.');
+      }
+
+      return false;
+    }
+  }
+
+  Future<bool> _updateAccountData({
+    required Wallet wallet,
+    required List<Expense> expenses,
+  }) async {
+    final previousWallet = _wallet;
+    final previousExpenses = List<Expense>.from(_expenses);
+
+    try {
+      // Save expenses first so account names remain consistent.
+      if (!await _storage.saveExpenses(expenses)) {
+        return false;
+      }
+
+      if (!await _storage.saveWallet(wallet)) {
+        // Restore the previous expenses if saving the wallet fails.
+        await _storage.saveExpenses(previousExpenses);
+        return false;
+      }
+
+      if (!mounted) return true;
+
+      setState(() {
+        _wallet = wallet;
+        _expenses = expenses;
+      });
+
+      return true;
+    } catch (error, stackTrace) {
+      debugPrint('Failed to update account data: $error');
+      debugPrintStack(stackTrace: stackTrace);
+
+      // Best-effort rollback of both persisted records.
+      try {
+        await _storage.saveExpenses(previousExpenses);
+        await _storage.saveWallet(previousWallet);
+      } catch (_) {
+        // Keep the original failure as the reported error.
+      }
+
       return false;
     }
   }
@@ -1241,7 +1296,8 @@ class _MainPageState extends State<MainPage> {
 
     final warnings = <String>[];
 
-    if (candidateInCurrentMonth &&
+    if (_monthlyBudget > 0 &&
+        candidateInCurrentMonth &&
         projectedMonthlySpending > _monthlyBudget &&
         projectedMonthlySpending > currentMonthlySpending) {
       warnings.add(
@@ -1312,6 +1368,7 @@ class _MainPageState extends State<MainPage> {
           context: context,
           barrierDismissible: false,
           builder: (dialogContext) => AlertDialog(
+            scrollable: true,
             backgroundColor: surface,
             icon: const Icon(
               Icons.warning_amber_rounded,
@@ -1702,6 +1759,7 @@ class _MainPageState extends State<MainPage> {
               wallet: _wallet,
               expenses: _expenses,
               onSave: _saveWallet,
+              onUpdateAccountData: _updateAccountData,
               primaryColor: _primaryColor,
             ),
           const SizedBox(height: 26),
@@ -3056,7 +3114,7 @@ class _MonthlyBudgetDialogState extends State<_MonthlyBudgetDialog> {
               decoration: const InputDecoration(
                 labelText: 'Monthly spending limit',
                 prefixText: '\u20B1 ',
-                hintText: '10000.00',
+                hintText: '0.00',
               ),
               validator: (value) {
                 final amount = double.tryParse(value?.trim() ?? '');

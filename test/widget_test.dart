@@ -236,9 +236,11 @@ void main() {
   testWidgets(
     'Custom accounts and transfers can be saved from the dashboard panel',
     (tester) async {
-      var wallet = Wallet(
+      var savedWallet = Wallet(
         openingBalances: {'Cash on Hand': 0, 'Bank': 1000, 'GCash': 0},
       );
+
+      var savedExpenses = <Expense>[];
 
       await tester.pumpWidget(
         MaterialApp(
@@ -246,13 +248,26 @@ void main() {
             body: StatefulBuilder(
               builder: (context, setState) => SingleChildScrollView(
                 child: WalletPanel(
-                  wallet: wallet,
-                  expenses: const [],
+                  wallet: savedWallet,
+                  expenses: savedExpenses,
                   primaryColor: const Color(0xFF7958FF),
-                  onSave: (updated) async {
-                    setState(() => wallet = updated);
+                  onSave: (updatedWallet) async {
+                    setState(() {
+                      savedWallet = updatedWallet;
+                    });
                     return true;
                   },
+                  onUpdateAccountData:
+                      ({
+                        required Wallet wallet,
+                        required List<Expense> expenses,
+                      }) async {
+                        setState(() {
+                          savedWallet = wallet;
+                          savedExpenses = List<Expense>.from(expenses);
+                        });
+                        return true;
+                      },
                 ),
               ),
             ),
@@ -267,12 +282,19 @@ void main() {
       await tester.enterText(find.byType(TextFormField).at(0), 'Maya');
       await tester.enterText(find.byType(TextFormField).at(1), '200');
 
-      await tester.tap(find.text('Save account'));
+      // The dialog title and its submit action can share the same text.
+      // Select the last matching widget instead of assuming a button type.
+      final createAccountFinder = find.text('Create account');
+
+      expect(createAccountFinder, findsNWidgets(2));
+
+      await tester.tap(createAccountFinder.last);
       await tester.pumpAndSettle();
 
-      expect(wallet.openingBalances['Maya'], 200);
+      expect(savedWallet.openingBalances['Maya'], 200);
+      expect(find.text('Create account'), findsNothing);
 
-      // Open the transfer dialog.
+      // Open the transfer / withdrawal dialog.
       await tester.ensureVisible(find.text('Transfer / withdraw'));
       await tester.pumpAndSettle();
 
@@ -281,6 +303,8 @@ void main() {
 
       // Select Bank as the source account.
       final dropdowns = find.byType(DropdownButtonFormField<String>);
+
+      expect(dropdowns, findsNWidgets(2));
 
       await tester.tap(dropdowns.at(0));
       await tester.pumpAndSettle();
@@ -297,32 +321,33 @@ void main() {
 
       final amountField = find.byType(TextFormField);
 
-      // An amount greater than Bank's balance must be rejected.
+      expect(amountField, findsOneWidget);
+
+      // A transfer exceeding Bank's balance must be rejected.
       await tester.enterText(amountField, '1100');
       await tester.tap(find.text('Confirm transfer'));
       await tester.pumpAndSettle();
 
       expect(find.text('Insufficient funds in this account.'), findsOneWidget);
-      expect(wallet.transfers, isEmpty);
+      expect(savedWallet.transfers, isEmpty);
 
       // A valid transfer of 300 should succeed.
       await tester.enterText(amountField, '300');
       await tester.tap(find.text('Confirm transfer'));
       await tester.pumpAndSettle();
 
-      expect(wallet.transfers, hasLength(1));
-      expect(wallet.transfers.single.from, 'Bank');
-      expect(wallet.transfers.single.to, 'Maya');
-      expect(wallet.transfers.single.amount, 300);
+      expect(savedWallet.transfers, hasLength(1));
+      expect(savedWallet.transfers.single.from, 'Bank');
+      expect(savedWallet.transfers.single.to, 'Maya');
+      expect(savedWallet.transfers.single.amount, 300);
 
-      expect(wallet.balance('Bank', []), 700);
-      expect(wallet.balance('Maya', []), 500);
+      expect(savedWallet.balance('Bank', savedExpenses), 700);
+      expect(savedWallet.balance('Maya', savedExpenses), 500);
 
-      // Print detailed diagnostics if a layout exception occurred.
       final exception = tester.takeException();
 
       if (exception != null) {
-        debugPrint('===== TRANSFER TEST LAYOUT ERROR =====');
+        debugPrint('===== TRANSFER TEST ERROR =====');
         debugPrint(exception.toString());
 
         if (exception is FlutterError) {

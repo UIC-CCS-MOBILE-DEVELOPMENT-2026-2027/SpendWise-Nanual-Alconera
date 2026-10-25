@@ -87,7 +87,7 @@ class ExpenseStorage {
   // Only the spending total resets because it is calculated from dated expenses.
   Future<double> loadMonthlyBudget() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getDouble(_monthlyBudgetStorageKey) ?? 10000.0;
+    return prefs.getDouble(_monthlyBudgetStorageKey) ?? 0.0;
   }
 
   Future<bool> saveMonthlyBudget(double amount) async {
