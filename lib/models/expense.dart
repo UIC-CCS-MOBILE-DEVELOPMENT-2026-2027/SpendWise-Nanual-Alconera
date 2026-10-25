@@ -4,6 +4,7 @@ class Expense {
   final double amount;
   final String category;
   final DateTime date;
+  final String account;
 
   const Expense({
     required this.id,
@@ -11,6 +12,7 @@ class Expense {
     required this.amount,
     required this.category,
     required this.date,
+    this.account = 'Cash on Hand',
   });
 
   Map<String, dynamic> toJson() {
@@ -19,6 +21,7 @@ class Expense {
       'description': description,
       'amount': amount,
       'category': category,
+      'account': account,
       'date': date.toIso8601String(),
     };
   }
@@ -29,6 +32,7 @@ class Expense {
       description: json['description'] as String,
       amount: (json['amount'] as num).toDouble(),
       category: json['category'] as String,
+      account: json['account'] as String? ?? 'Cash on Hand',
       date: DateTime.parse(json['date'] as String),
     );
   }
@@ -38,6 +42,7 @@ class Expense {
     double? amount,
     String? category,
     DateTime? date,
+    String? account,
   }) {
     return Expense(
       id: id,
@@ -45,6 +50,7 @@ class Expense {
       amount: amount ?? this.amount,
       category: category ?? this.category,
       date: date ?? this.date,
+      account: account ?? this.account,
     );
   }
 }

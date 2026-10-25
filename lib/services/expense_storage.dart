@@ -3,8 +3,22 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/expense.dart';
+import '../models/wallet.dart';
 
 class ExpenseStorage {
+  Future<Wallet> loadWallet() async {
+    final prefs = await SharedPreferences.getInstance();
+    final data = prefs.getString('spendwise_wallet');
+    return data == null
+        ? Wallet()
+        : Wallet.fromJson(jsonDecode(data) as Map<String, dynamic>);
+  }
+
+  Future<bool> saveWallet(Wallet wallet) async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.setString('spendwise_wallet', jsonEncode(wallet.toJson()));
+  }
+
   static const String _storageKey = 'spendwise_expenses';
   static const String _budgetStorageKey = 'spendwise_category_budgets';
   static const String _monthlyBudgetStorageKey =
@@ -134,7 +148,10 @@ class ExpenseStorage {
     final storedData = prefs.getString(_shopStorageKey);
 
     if (storedData == null || storedData.isEmpty) {
-      return {'selectedTheme': 'default', 'unlockedThemes': ['default']};
+      return {
+        'selectedTheme': 'default',
+        'unlockedThemes': ['default'],
+      };
     }
 
     try {
@@ -144,7 +161,10 @@ class ExpenseStorage {
       }
     } catch (_) {}
 
-    return {'selectedTheme': 'default', 'unlockedThemes': ['default']};
+    return {
+      'selectedTheme': 'default',
+      'unlockedThemes': ['default'],
+    };
   }
 
   Future<bool> saveShopData(Map<String, dynamic> shopData) async {

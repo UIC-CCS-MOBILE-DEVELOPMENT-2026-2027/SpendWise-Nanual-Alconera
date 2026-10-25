@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import 'models/expense.dart';
+import 'models/wallet.dart';
+import 'wallet_panel.dart';
 import 'services/expense_storage.dart';
 
 void main() {
@@ -16,7 +18,6 @@ const Color emerald = Color(0xFF52D6A0);
 const Color gold = Color(0xFFF5C66B);
 const Color muted = Color(0xFF9CA3B8);
 const Color danger = Color(0xFFDC5265);
-const double demoIncome = 18000;
 
 const List<String> categories = [
   'Food & Dining',
@@ -137,22 +138,134 @@ class QuestDef {
 
 const List<QuestDef> allQuests = [
   // Basics
-  QuestDef(id: 'first_expense', title: 'First Expense', description: 'Record your first transaction.', xp: 10, coins: 5, category: 'basics', icon: Icons.flag_rounded),
-  QuestDef(id: 'track_five_expenses', title: 'Track Your Spending', description: 'Record five expenses.', xp: 20, coins: 10, category: 'basics', icon: Icons.format_list_numbered_rounded),
-  QuestDef(id: 'track_ten_expenses', title: 'Dedicated Tracker', description: 'Record ten expenses.', xp: 30, coins: 15, category: 'basics', icon: Icons.trending_up_rounded),
-  QuestDef(id: 'track_twenty_five', title: 'Quarter Century', description: 'Record twenty-five expenses.', xp: 50, coins: 25, category: 'basics', icon: Icons.military_tech_rounded),
-  QuestDef(id: 'three_categories', title: 'Diversified Spender', description: 'Log expenses in 3 different categories.', xp: 20, coins: 10, category: 'basics', icon: Icons.category_rounded),
-  QuestDef(id: 'all_categories', title: 'Full Spectrum', description: 'Log expenses in all 8 categories.', xp: 40, coins: 20, category: 'basics', icon: Icons.auto_awesome_rounded),
+  QuestDef(
+    id: 'first_expense',
+    title: 'First Expense',
+    description: 'Record your first transaction.',
+    xp: 10,
+    coins: 5,
+    category: 'basics',
+    icon: Icons.flag_rounded,
+  ),
+  QuestDef(
+    id: 'track_five_expenses',
+    title: 'Track Your Spending',
+    description: 'Record five expenses.',
+    xp: 20,
+    coins: 10,
+    category: 'basics',
+    icon: Icons.format_list_numbered_rounded,
+  ),
+  QuestDef(
+    id: 'track_ten_expenses',
+    title: 'Dedicated Tracker',
+    description: 'Record ten expenses.',
+    xp: 30,
+    coins: 15,
+    category: 'basics',
+    icon: Icons.trending_up_rounded,
+  ),
+  QuestDef(
+    id: 'track_twenty_five',
+    title: 'Quarter Century',
+    description: 'Record twenty-five expenses.',
+    xp: 50,
+    coins: 25,
+    category: 'basics',
+    icon: Icons.military_tech_rounded,
+  ),
+  QuestDef(
+    id: 'three_categories',
+    title: 'Diversified Spender',
+    description: 'Log expenses in 3 different categories.',
+    xp: 20,
+    coins: 10,
+    category: 'basics',
+    icon: Icons.category_rounded,
+  ),
+  QuestDef(
+    id: 'all_categories',
+    title: 'Full Spectrum',
+    description: 'Log expenses in all 8 categories.',
+    xp: 40,
+    coins: 20,
+    category: 'basics',
+    icon: Icons.auto_awesome_rounded,
+  ),
   // Budget
-  QuestDef(id: 'set_monthly_budget', title: 'Budget Planner', description: 'Set your overall monthly budget.', xp: 15, coins: 10, category: 'budget', icon: Icons.account_balance_wallet_rounded),
-  QuestDef(id: 'set_category_budget', title: 'Category Master', description: 'Set a budget for any category.', xp: 15, coins: 10, category: 'budget', icon: Icons.tune_rounded),
-  QuestDef(id: 'under_budget_month', title: 'Budget Hero', description: 'Stay under your monthly budget with 5+ expenses this month.', xp: 50, coins: 30, category: 'budget', icon: Icons.shield_rounded),
-  QuestDef(id: 'big_saver', title: 'Big Saver', description: 'Have 50%+ of your monthly budget remaining with 3+ expenses.', xp: 60, coins: 40, category: 'budget', icon: Icons.savings_rounded),
+  QuestDef(
+    id: 'set_monthly_budget',
+    title: 'Budget Planner',
+    description: 'Set your overall monthly budget.',
+    xp: 15,
+    coins: 10,
+    category: 'budget',
+    icon: Icons.account_balance_wallet_rounded,
+  ),
+  QuestDef(
+    id: 'set_category_budget',
+    title: 'Category Master',
+    description: 'Set a budget for any category.',
+    xp: 15,
+    coins: 10,
+    category: 'budget',
+    icon: Icons.tune_rounded,
+  ),
+  QuestDef(
+    id: 'under_budget_month',
+    title: 'Budget Hero',
+    description: 'Stay under your monthly budget with 5+ expenses this month.',
+    xp: 50,
+    coins: 30,
+    category: 'budget',
+    icon: Icons.shield_rounded,
+  ),
+  QuestDef(
+    id: 'big_saver',
+    title: 'Big Saver',
+    description: 'Have 50%+ of your monthly budget remaining with 3+ expenses.',
+    xp: 60,
+    coins: 40,
+    category: 'budget',
+    icon: Icons.savings_rounded,
+  ),
   // Streaks
-  QuestDef(id: 'streak_3', title: '3-Day Streak', description: 'Log expenses 3 days in a row.', xp: 15, coins: 5, category: 'streak', icon: Icons.local_fire_department_rounded),
-  QuestDef(id: 'streak_7', title: 'Week Warrior', description: 'Log expenses 7 days in a row.', xp: 30, coins: 15, category: 'streak', icon: Icons.local_fire_department_rounded),
-  QuestDef(id: 'streak_14', title: 'Fortnight Focus', description: 'Log expenses 14 days in a row.', xp: 50, coins: 25, category: 'streak', icon: Icons.local_fire_department_rounded),
-  QuestDef(id: 'streak_30', title: 'Monthly Master', description: 'Log expenses 30 days in a row.', xp: 100, coins: 50, category: 'streak', icon: Icons.local_fire_department_rounded),
+  QuestDef(
+    id: 'streak_3',
+    title: '3-Day Streak',
+    description: 'Log expenses 3 days in a row.',
+    xp: 15,
+    coins: 5,
+    category: 'streak',
+    icon: Icons.local_fire_department_rounded,
+  ),
+  QuestDef(
+    id: 'streak_7',
+    title: 'Week Warrior',
+    description: 'Log expenses 7 days in a row.',
+    xp: 30,
+    coins: 15,
+    category: 'streak',
+    icon: Icons.local_fire_department_rounded,
+  ),
+  QuestDef(
+    id: 'streak_14',
+    title: 'Fortnight Focus',
+    description: 'Log expenses 14 days in a row.',
+    xp: 50,
+    coins: 25,
+    category: 'streak',
+    icon: Icons.local_fire_department_rounded,
+  ),
+  QuestDef(
+    id: 'streak_30',
+    title: 'Monthly Master',
+    description: 'Log expenses 30 days in a row.',
+    xp: 100,
+    coins: 50,
+    category: 'streak',
+    icon: Icons.local_fire_department_rounded,
+  ),
 ];
 
 // ─── Theme Shop Definitions ────────────────────────────────────────
@@ -176,12 +289,54 @@ class ThemeOption {
 }
 
 const List<ThemeOption> shopThemes = [
-  ThemeOption(id: 'default', name: 'Royal Violet', emoji: '💜', color: violet, cost: 0, gradient: [Color(0xFF7858FF), Color(0xFF5135B8)]),
-  ThemeOption(id: 'emerald', name: 'Emerald', emoji: '💚', color: Color(0xFF10B981), cost: 50, gradient: [Color(0xFF10B981), Color(0xFF065F46)]),
-  ThemeOption(id: 'sunset', name: 'Sunset', emoji: '🌅', color: Color(0xFFFF6B35), cost: 50, gradient: [Color(0xFFFF6B35), Color(0xFFB83A00)]),
-  ThemeOption(id: 'ocean', name: 'Ocean', emoji: '🌊', color: Color(0xFF3B82F6), cost: 50, gradient: [Color(0xFF3B82F6), Color(0xFF1E40AF)]),
-  ThemeOption(id: 'rose', name: 'Rose', emoji: '🌹', color: Color(0xFFF43F5E), cost: 50, gradient: [Color(0xFFF43F5E), Color(0xFF9F1239)]),
-  ThemeOption(id: 'gold', name: 'Gold Premium', emoji: '✨', color: Color(0xFFD4A017), cost: 100, gradient: [Color(0xFFD4A017), Color(0xFF8B6914)]),
+  ThemeOption(
+    id: 'default',
+    name: 'Royal Violet',
+    emoji: '💜',
+    color: violet,
+    cost: 0,
+    gradient: [Color(0xFF7858FF), Color(0xFF5135B8)],
+  ),
+  ThemeOption(
+    id: 'emerald',
+    name: 'Emerald',
+    emoji: '💚',
+    color: Color(0xFF10B981),
+    cost: 50,
+    gradient: [Color(0xFF10B981), Color(0xFF065F46)],
+  ),
+  ThemeOption(
+    id: 'sunset',
+    name: 'Sunset',
+    emoji: '🌅',
+    color: Color(0xFFFF6B35),
+    cost: 50,
+    gradient: [Color(0xFFFF6B35), Color(0xFFB83A00)],
+  ),
+  ThemeOption(
+    id: 'ocean',
+    name: 'Ocean',
+    emoji: '🌊',
+    color: Color(0xFF3B82F6),
+    cost: 50,
+    gradient: [Color(0xFF3B82F6), Color(0xFF1E40AF)],
+  ),
+  ThemeOption(
+    id: 'rose',
+    name: 'Rose',
+    emoji: '🌹',
+    color: Color(0xFFF43F5E),
+    cost: 50,
+    gradient: [Color(0xFFF43F5E), Color(0xFF9F1239)],
+  ),
+  ThemeOption(
+    id: 'gold',
+    name: 'Gold Premium',
+    emoji: '✨',
+    color: Color(0xFFD4A017),
+    cost: 100,
+    gradient: [Color(0xFFD4A017), Color(0xFF8B6914)],
+  ),
 ];
 
 class SpendWiseApp extends StatefulWidget {
@@ -213,9 +368,9 @@ class _SpendWiseAppState extends State<SpendWiseApp> {
   }
 
   ThemeOption get _currentTheme => shopThemes.firstWhere(
-        (t) => t.id == _activeThemeId,
-        orElse: () => shopThemes.first,
-      );
+    (t) => t.id == _activeThemeId,
+    orElse: () => shopThemes.first,
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -274,6 +429,8 @@ class _MainPageState extends State<MainPage> {
   final ExpenseStorage _storage = ExpenseStorage();
 
   List<Expense> _expenses = [];
+  Wallet _wallet = Wallet();
+  bool _walletAvailable = false;
   Map<String, double> _budgets = {};
 
   double _monthlyBudget = 10000;
@@ -305,6 +462,7 @@ class _MainPageState extends State<MainPage> {
   Future<void> _initialize() async {
     await Future.wait([
       _loadExpenses(),
+      _loadWallet(),
       _loadBudgets(),
       _loadMonthlyBudget(),
       _loadQuestProgress(),
@@ -429,7 +587,9 @@ class _MainPageState extends State<MainPage> {
       builder: (ctx) => AlertDialog(
         backgroundColor: surface,
         title: Text('Unlock ${theme.name}?'),
-        content: Text('Spend ${theme.cost} coins to unlock the ${theme.name} theme?'),
+        content: Text(
+          'Spend ${theme.cost} coins to unlock the ${theme.name} theme?',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -465,6 +625,32 @@ class _MainPageState extends State<MainPage> {
     });
 
     _message('Unlocked and equipped ${theme.name} theme! 🎉');
+  }
+
+  Future<void> _loadWallet() async {
+    try {
+      final wallet = await _storage.loadWallet();
+      if (!mounted) return;
+      setState(() {
+        _wallet = wallet;
+        _walletAvailable = true;
+      });
+    } catch (_) {
+      if (mounted) {
+        _message('Could not load accounts. Restart the app to retry.');
+      }
+    }
+  }
+
+  Future<bool> _saveWallet(Wallet wallet) async {
+    try {
+      if (!await _storage.saveWallet(wallet)) throw StateError('Save failed');
+      if (mounted) setState(() => _wallet = wallet);
+      return true;
+    } catch (_) {
+      if (mounted) _message('Could not save accounts. Please try again.');
+      return false;
+    }
   }
 
   Future<void> _loadExpenses() async {
@@ -547,10 +733,10 @@ class _MainPageState extends State<MainPage> {
     final totalCount = _expenses.length;
     final categoriesUsed = _expenses.map((e) => e.category).toSet();
     final now = DateTime.now();
-    final monthExpenses =
-        _expenses.where((e) => isSameMonth(e.date, now)).toList();
-    final monthSpending =
-        monthExpenses.fold<double>(0, (s, e) => s + e.amount);
+    final monthExpenses = _expenses
+        .where((e) => isSameMonth(e.date, now))
+        .toList();
+    final monthSpending = monthExpenses.fold<double>(0, (s, e) => s + e.amount);
 
     // 1. Basics
     if (totalCount >= 1) completeQuest('first_expense');
@@ -625,6 +811,7 @@ class _MainPageState extends State<MainPage> {
       context: context,
       barrierDismissible: true,
       builder: (dialogContext) => AlertDialog(
+        scrollable: true,
         backgroundColor: surface,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
         contentPadding: const EdgeInsets.fromLTRB(22, 26, 22, 18),
@@ -845,7 +1032,9 @@ class _MainPageState extends State<MainPage> {
       case 'all_categories':
         return '${categoriesCount.clamp(0, categories.length)} / ${categories.length} categories';
       case 'set_monthly_budget':
-        return _monthlyBudget != 10000.0 ? 'Budget set' : 'Tap Budget tab to set';
+        return _monthlyBudget != 10000.0
+            ? 'Budget set'
+            : 'Tap Budget tab to set';
       case 'set_category_budget':
         return _budgets.isNotEmpty ? '${_budgets.length} set' : '0 set';
       case 'under_budget_month':
@@ -1105,7 +1294,13 @@ class _MainPageState extends State<MainPage> {
         isScrollControlled: true,
         backgroundColor: surface,
         useSafeArea: true,
-        builder: (_) => ExpenseForm(expense: draft),
+        builder: (_) => ExpenseForm(
+          expense: draft,
+          accounts: {
+            ..._wallet.openingBalances.keys,
+            ..._expenses.map((e) => e.account),
+          }.toList(),
+        ),
       );
 
       if (result == null || !mounted) return;
@@ -1361,7 +1556,12 @@ class _MainPageState extends State<MainPage> {
     final progress = _monthlyBudget <= 0
         ? 0.0
         : (_monthlyExpenses / _monthlyBudget).clamp(0.0, 1.0);
-    final remainingIncome = demoIncome - _allExpenses;
+    final remainingIncome =
+        _wallet.openingBalances.values.fold<double>(
+          0,
+          (sum, amount) => sum + amount,
+        ) -
+        _allExpenses;
     final budgetRemaining = _monthlyBudget - _monthlyExpenses;
 
     return SafeArea(
@@ -1374,9 +1574,7 @@ class _MainPageState extends State<MainPage> {
                 width: 46,
                 height: 46,
                 decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: _primaryGradient,
-                  ),
+                  gradient: LinearGradient(colors: _primaryGradient),
                   borderRadius: BorderRadius.circular(15),
                 ),
                 child: const Icon(
@@ -1464,7 +1662,7 @@ class _MainPageState extends State<MainPage> {
                 ),
                 const SizedBox(height: 8),
                 const Text(
-                  'Demo income minus all recorded expenses',
+                  'Combined balance across your accounts',
                   style: TextStyle(color: lavender, fontSize: 11),
                 ),
                 const SizedBox(height: 22),
@@ -1473,8 +1671,13 @@ class _MainPageState extends State<MainPage> {
                     Expanded(
                       child: _BalanceStat(
                         icon: Icons.south_west_rounded,
-                        label: 'Demo income',
-                        amount: peso(demoIncome),
+                        label: 'Opening funds',
+                        amount: peso(
+                          _wallet.openingBalances.values.fold<double>(
+                            0,
+                            (sum, amount) => sum + amount,
+                          ),
+                        ),
                         color: emerald,
                       ),
                     ),
@@ -1493,6 +1696,13 @@ class _MainPageState extends State<MainPage> {
               ],
             ),
           ),
+          const SizedBox(height: 26),
+          if (_walletAvailable)
+            WalletPanel(
+              wallet: _wallet,
+              expenses: _expenses,
+              onSave: _saveWallet,
+            ),
           const SizedBox(height: 26),
           Row(
             children: [
@@ -1524,9 +1734,9 @@ class _MainPageState extends State<MainPage> {
               Expanded(
                 child: _SummaryCard(
                   icon: Icons.savings_rounded,
-                  title: 'Unspent income',
+                  title: 'Balance',
                   amount: peso(remainingIncome),
-                  subtitle: 'Demo income balance',
+                  subtitle: 'All accounts',
                   color: emerald,
                 ),
               ),
@@ -1830,9 +2040,11 @@ class _MainPageState extends State<MainPage> {
                 children: [
                   Icon(Icons.account_balance_wallet_rounded, color: lavender),
                   SizedBox(width: 8),
-                  Text(
-                    'Your category budgets',
-                    style: TextStyle(color: lavender),
+                  Expanded(
+                    child: Text(
+                      'Your category budgets',
+                      style: TextStyle(color: lavender),
+                    ),
                   ),
                 ],
               ),
@@ -2251,11 +2463,12 @@ class _MainPageState extends State<MainPage> {
     final levelProgress = level >= 7
         ? 1.0
         : (xpNeededInCurrentLevel == 0
-            ? 0.0
-            : (xpInCurrentLevel / xpNeededInCurrentLevel).clamp(0.0, 1.0));
+              ? 0.0
+              : (xpInCurrentLevel / xpNeededInCurrentLevel).clamp(0.0, 1.0));
 
-    final completedCount =
-        allQuests.where((q) => _completedQuests.contains(q.id)).length;
+    final completedCount = allQuests
+        .where((q) => _completedQuests.contains(q.id))
+        .length;
 
     final filteredQuests = allQuests.where((q) {
       if (_questCategoryFilter == 'all') return true;
@@ -2358,10 +2571,7 @@ class _MainPageState extends State<MainPage> {
                         const SizedBox(height: 3),
                         Text(
                           '$_questXp total XP earned',
-                          style: const TextStyle(
-                            color: lavender,
-                            fontSize: 12,
-                          ),
+                          style: const TextStyle(color: lavender, fontSize: 12),
                         ),
                       ],
                     ),
@@ -2389,9 +2599,7 @@ class _MainPageState extends State<MainPage> {
                     style: const TextStyle(color: lavender, fontSize: 11),
                   ),
                   Text(
-                    level >= 7
-                        ? 'MAX'
-                        : '${(levelProgress * 100).toInt()}%',
+                    level >= 7 ? 'MAX' : '${(levelProgress * 100).toInt()}%',
                     style: const TextStyle(
                       color: gold,
                       fontWeight: FontWeight.bold,
@@ -2487,9 +2695,7 @@ class _MainPageState extends State<MainPage> {
                         style: TextStyle(
                           fontWeight: FontWeight.bold,
                           fontSize: 13,
-                          color: _questTabSegment == 0
-                              ? Colors.white
-                              : muted,
+                          color: _questTabSegment == 0 ? Colors.white : muted,
                         ),
                       ),
                     ),
@@ -2592,11 +2798,7 @@ class _MainPageState extends State<MainPage> {
             ),
             child: const Row(
               children: [
-                Icon(
-                  Icons.palette_rounded,
-                  color: gold,
-                  size: 28,
-                ),
+                Icon(Icons.palette_rounded, color: gold, size: 28),
                 SizedBox(width: 12),
                 Expanded(
                   child: Column(
@@ -2631,9 +2833,7 @@ class _MainPageState extends State<MainPage> {
                 border: Border.all(
                   color: isActive
                       ? theme.color
-                      : (isUnlocked
-                          ? Colors.white24
-                          : Colors.white10),
+                      : (isUnlocked ? Colors.white24 : Colors.white10),
                   width: isActive ? 1.8 : 1.0,
                 ),
               ),
@@ -2714,7 +2914,10 @@ class _MainPageState extends State<MainPage> {
                         ),
                       ),
                       onPressed: () => _buyOrEquipTheme(theme),
-                      child: const Text('Equip', style: TextStyle(fontSize: 12)),
+                      child: const Text(
+                        'Equip',
+                        style: TextStyle(fontSize: 12),
+                      ),
                     )
                   else
                     FilledButton.icon(
@@ -2815,6 +3018,7 @@ class _MonthlyBudgetDialogState extends State<_MonthlyBudgetDialog> {
   Widget build(BuildContext context) {
     return AlertDialog(
       backgroundColor: surface,
+      scrollable: true,
       title: const Text('Overall monthly budget'),
       content: Form(
         key: _formKey,
@@ -2980,7 +3184,9 @@ class _CategoryBudgetDialogState extends State<_CategoryBudgetDialog> {
 class ExpenseForm extends StatefulWidget {
   final Expense? expense;
 
-  const ExpenseForm({super.key, this.expense});
+  final List<String> accounts;
+
+  const ExpenseForm({super.key, this.expense, this.accounts = defaultAccounts});
 
   @override
   State<ExpenseForm> createState() => _ExpenseFormState();
@@ -2991,6 +3197,7 @@ class _ExpenseFormState extends State<ExpenseForm> {
   late final TextEditingController _descriptionController;
   late final TextEditingController _amountController;
   late String _category;
+  late String _account;
   late DateTime _date;
 
   bool get _editing => widget.expense != null;
@@ -3010,6 +3217,7 @@ class _ExpenseFormState extends State<ExpenseForm> {
     );
 
     _category = expense?.category ?? categories.first;
+    _account = expense?.account ?? widget.accounts.first;
     _date = expense?.date ?? DateTime.now();
   }
 
@@ -3048,6 +3256,7 @@ class _ExpenseFormState extends State<ExpenseForm> {
     final amount = double.parse(_amountController.text.trim());
     final description = _descriptionController.text.trim();
     final oldExpense = widget.expense;
+    FocusScope.of(context).unfocus();
 
     Navigator.of(context).pop(
       Expense(
@@ -3055,6 +3264,7 @@ class _ExpenseFormState extends State<ExpenseForm> {
         description: description,
         amount: amount,
         category: _category,
+        account: _account,
         date: _date,
       ),
     );
@@ -3145,6 +3355,21 @@ class _ExpenseFormState extends State<ExpenseForm> {
                   }
 
                   return null;
+                },
+              ),
+              const SizedBox(height: 18),
+              DropdownButtonFormField<String>(
+                initialValue: _account,
+                isExpanded: true,
+                decoration: const InputDecoration(labelText: 'Paid from'),
+                items: widget.accounts
+                    .map(
+                      (name) =>
+                          DropdownMenuItem(value: name, child: Text(name)),
+                    )
+                    .toList(),
+                onChanged: (value) {
+                  if (value != null) setState(() => _account = value);
                 },
               ),
               const SizedBox(height: 18),
@@ -3381,7 +3606,7 @@ class _TransactionTile extends StatelessWidget {
             style: const TextStyle(fontWeight: FontWeight.w600),
           ),
           subtitle: Text(
-            '${expense.category} · ${dateLabel(expense.date)}',
+            '${expense.category} · ${expense.account} · ${dateLabel(expense.date)}',
             style: const TextStyle(color: muted, fontSize: 11),
           ),
           trailing: PopupMenuButton<String>(
