@@ -1614,13 +1614,13 @@ class _MainPageState extends State<MainPage> {
           Container(
             padding: const EdgeInsets.all(22),
             decoration: BoxDecoration(
-              gradient: const LinearGradient(
+              gradient: LinearGradient(
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
                 colors: [
-                  Color(0xFF7858FF),
-                  Color(0xFF5135B8),
-                  Color(0xFF30245F),
+                  _primaryColor,
+                  Color.lerp(_primaryColor, Colors.black, 0.25)!,
+                  Color.lerp(_primaryColor, Colors.black, 0.55)!,
                 ],
               ),
               borderRadius: BorderRadius.circular(26),
@@ -1702,6 +1702,7 @@ class _MainPageState extends State<MainPage> {
               wallet: _wallet,
               expenses: _expenses,
               onSave: _saveWallet,
+              primaryColor: _primaryColor,
             ),
           const SizedBox(height: 26),
           Row(
@@ -1767,9 +1768,12 @@ class _MainPageState extends State<MainPage> {
               children: [
                 Row(
                   children: [
-                    const CircleAvatar(
-                      backgroundColor: Color(0xFF302650),
-                      child: Icon(Icons.pie_chart_rounded, color: lavender),
+                    CircleAvatar(
+                      backgroundColor: _primaryColor.withValues(alpha: 0.18),
+                      child: Icon(
+                        Icons.pie_chart_rounded,
+                        color: _primaryColor,
+                      ),
                     ),
                     const SizedBox(width: 12),
                     const Expanded(
@@ -2026,10 +2030,13 @@ class _MainPageState extends State<MainPage> {
         Container(
           padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
-            gradient: const LinearGradient(
+            gradient: LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
-              colors: [Color(0xFF5135B8), Color(0xFF30245F)],
+              colors: [
+                _primaryColor,
+                Color.lerp(_primaryColor, Colors.black, 0.55)!,
+              ],
             ),
             borderRadius: BorderRadius.circular(24),
           ),
@@ -2288,8 +2295,13 @@ class _MainPageState extends State<MainPage> {
         Container(
           padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
-            gradient: const LinearGradient(
-              colors: [Color(0xFF5135B8), Color(0xFF30245F)],
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                _primaryColor,
+                Color.lerp(_primaryColor, Colors.black, 0.55)!,
+              ],
             ),
             borderRadius: BorderRadius.circular(22),
           ),
@@ -2298,7 +2310,7 @@ class _MainPageState extends State<MainPage> {
             children: [
               const Text(
                 'Total recorded expenses',
-                style: TextStyle(color: lavender),
+                style: TextStyle(color: Colors.white70),
               ),
               const SizedBox(height: 8),
               Text(
@@ -2311,7 +2323,7 @@ class _MainPageState extends State<MainPage> {
               const SizedBox(height: 5),
               Text(
                 '${_expenses.length} ${_expenses.length == 1 ? 'transaction' : 'transactions'}',
-                style: const TextStyle(color: lavender, fontSize: 12),
+                style: const TextStyle(color: Colors.white70, fontSize: 12),
               ),
             ],
           ),
@@ -2479,22 +2491,25 @@ class _MainPageState extends State<MainPage> {
       padding: const EdgeInsets.all(20),
       children: [
         Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Money Quest',
-                  style: TextStyle(fontSize: 25, fontWeight: FontWeight.bold),
-                ),
-                SizedBox(height: 4),
-                Text(
-                  'Level up your financial journey',
-                  style: TextStyle(color: muted, fontSize: 13),
-                ),
-              ],
+            const Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Money Quest',
+                    style: TextStyle(fontSize: 25, fontWeight: FontWeight.bold),
+                  ),
+                  SizedBox(height: 4),
+                  Text(
+                    'Level up your financial journey',
+                    style: TextStyle(color: muted, fontSize: 13),
+                  ),
+                ],
+              ),
             ),
+            const SizedBox(width: 8),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
               decoration: BoxDecoration(
@@ -2503,6 +2518,7 @@ class _MainPageState extends State<MainPage> {
                 border: Border.all(color: gold.withValues(alpha: 0.25)),
               ),
               child: Row(
+                mainAxisSize: MainAxisSize.min,
                 children: [
                   const Text('🪙 ', style: TextStyle(fontSize: 16)),
                   Text(
