@@ -268,6 +268,59 @@ const List<QuestDef> allQuests = [
   ),
 ];
 
+class BadgeDef {
+  final String id;
+  final String title;
+  final String description;
+  final IconData icon;
+
+  const BadgeDef({
+    required this.id,
+    required this.title,
+    required this.description,
+    required this.icon,
+  });
+}
+
+const List<BadgeDef> allBadges = [
+  BadgeDef(
+    id: 'first_steps',
+    title: 'First Steps',
+    description: 'Record your first expense.',
+    icon: Icons.flag_rounded,
+  ),
+  BadgeDef(
+    id: 'category_explorer',
+    title: 'Category Explorer',
+    description: 'Use all eight expense categories.',
+    icon: Icons.category_rounded,
+  ),
+  BadgeDef(
+    id: 'budget_guardian',
+    title: 'Budget Guardian',
+    description: 'Complete the Budget Hero quest.',
+    icon: Icons.shield_rounded,
+  ),
+  BadgeDef(
+    id: 'streak_champion',
+    title: 'Streak Champion',
+    description: 'Reach a seven-day streak.',
+    icon: Icons.local_fire_department_rounded,
+  ),
+  BadgeDef(
+    id: 'dedicated_tracker',
+    title: 'Dedicated Tracker',
+    description: 'Record 25 expenses.',
+    icon: Icons.military_tech_rounded,
+  ),
+  BadgeDef(
+    id: 'big_saver',
+    title: 'Big Saver',
+    description: 'Complete the Big Saver quest.',
+    icon: Icons.savings_rounded,
+  ),
+];
+
 // ─── Theme Shop Definitions ────────────────────────────────────────
 
 class ThemeOption {
@@ -438,6 +491,8 @@ class _MainPageState extends State<MainPage> {
   int _questXp = 0;
   int _questCoins = 0;
   final Set<String> _completedQuests = {};
+  final Set<String> _earnedBadges = {};
+  bool _badgeStateLoaded = false;
 
   int _currentStreak = 0;
   int _bestStreak = 0;
@@ -468,6 +523,7 @@ class _MainPageState extends State<MainPage> {
       _loadQuestProgress(),
       _loadStreak(),
       _loadShop(),
+      _loadBadges(),
     ]);
 
     if (!mounted) return;
@@ -763,8 +819,29 @@ class _MainPageState extends State<MainPage> {
     }
   }
 
+  Future<void> _loadBadges() async {
+    try {
+      final badges = await _storage.loadEarnedBadges();
+
+      if (!mounted) return;
+
+      setState(() {
+        _earnedBadges
+          ..clear()
+          ..addAll(badges);
+        _badgeStateLoaded = true;
+      });
+    } catch (error) {
+      debugPrint('Failed to load badges: $error');
+
+      if (mounted) {
+        setState(() => _badgeStateLoaded = true);
+      }
+    }
+  }
+
   Future<void> _updateQuestProgress({bool showCelebration = true}) async {
-    if (!_questStateLoaded) return;
+    if (!_questStateLoaded || !_badgeStateLoaded) return;
 
     _recalculateStreak();
 
@@ -777,6 +854,7 @@ class _MainPageState extends State<MainPage> {
           (q) => q.id == id,
           orElse: () => allQuests.first,
         );
+
         if (_completedQuests.add(id)) {
           _questXp += def.xp;
           _questCoins += def.coins;
@@ -788,10 +866,15 @@ class _MainPageState extends State<MainPage> {
     final totalCount = _expenses.length;
     final categoriesUsed = _expenses.map((e) => e.category).toSet();
     final now = DateTime.now();
+
     final monthExpenses = _expenses
         .where((e) => isSameMonth(e.date, now))
         .toList();
-    final monthSpending = monthExpenses.fold<double>(0, (s, e) => s + e.amount);
+
+    final monthSpending = monthExpenses.fold<double>(
+      0,
+      (sum, expense) => sum + expense.amount,
+    );
 
     // 1. Basics
     if (totalCount >= 1) completeQuest('first_expense');
@@ -799,6 +882,7 @@ class _MainPageState extends State<MainPage> {
     if (totalCount >= 10) completeQuest('track_ten_expenses');
     if (totalCount >= 25) completeQuest('track_twenty_five');
     if (categoriesUsed.length >= 3) completeQuest('three_categories');
+
     if (categoriesUsed.length >= categories.length) {
       completeQuest('all_categories');
     }
@@ -807,12 +891,17 @@ class _MainPageState extends State<MainPage> {
     if (_monthlyBudget > 0 && _monthlyBudget != 10000.0) {
       completeQuest('set_monthly_budget');
     }
-    if (_budgets.isNotEmpty) completeQuest('set_category_budget');
+
+    if (_budgets.isNotEmpty) {
+      completeQuest('set_category_budget');
+    }
+
     if (monthExpenses.length >= 5 &&
         _monthlyBudget > 0 &&
         monthSpending <= _monthlyBudget) {
       completeQuest('under_budget_month');
     }
+
     if (monthExpenses.length >= 3 &&
         _monthlyBudget > 0 &&
         monthSpending <= (_monthlyBudget * 0.5)) {
@@ -825,7 +914,61 @@ class _MainPageState extends State<MainPage> {
     if (_currentStreak >= 14) completeQuest('streak_14');
     if (_currentStreak >= 30) completeQuest('streak_30');
 
-    if (newlyCompleted.isEmpty) return;
+    // 4. Badges
+    final newlyEarnedBadges = <BadgeDef>[];
+
+    void unlockBadge(String id) {
+      if (_earnedBadges.add(id)) {
+        final badge = allBadges.firstWhere((item) => item.id == id);
+        newlyEarnedBadges.add(badge);
+      }
+    }
+
+    if (totalCount >= 1) unlockBadge('first_steps');
+
+    if (categoriesUsed.length >= categories.length) {
+      unlockBadge('category_explorer');
+    }
+
+    if (_completedQuests.contains('under_budget_month')) {
+      unlockBadge('budget_guardian');
+    }
+
+    if (_currentStreak >= 7) {
+      unlockBadge('streak_champion');
+    }
+
+    if (totalCount >= 25) {
+      unlockBadge('dedicated_tracker');
+    }
+
+    if (_completedQuests.contains('big_saver')) {
+      unlockBadge('big_saver');
+    }
+
+    // Persist badges independently of quest rewards.
+    if (newlyEarnedBadges.isNotEmpty) {
+      try {
+        final saved = await _storage.saveEarnedBadges(_earnedBadges);
+
+        if (!saved && mounted) {
+          _message('Earned badges could not be saved.');
+        }
+      } catch (error) {
+        debugPrint('Failed to save earned badges: $error');
+
+        if (mounted) {
+          _message('Earned badges could not be saved.');
+        }
+      }
+    }
+
+    if (newlyCompleted.isEmpty) {
+      if (newlyEarnedBadges.isNotEmpty && mounted) {
+        setState(() {});
+      }
+      return;
+    }
 
     try {
       final success = await _storage.saveQuestProgress({
@@ -846,14 +989,17 @@ class _MainPageState extends State<MainPage> {
       final didLevelUp = newLevel > prevLevel;
 
       if (showCelebration && mounted) {
-        _showQuestCelebrationDialog(
+        await _showQuestCelebrationDialog(
           newlyCompleted,
           didLevelUp ? newLevel : null,
         );
       }
     } catch (error) {
       debugPrint('Failed to save quest progress: $error');
-      if (mounted) _message('Quest rewards could not be saved.');
+
+      if (mounted) {
+        _message('Quest rewards could not be saved.');
+      }
     }
   }
 
@@ -2536,10 +2682,6 @@ class _MainPageState extends State<MainPage> {
               ? 0.0
               : (xpInCurrentLevel / xpNeededInCurrentLevel).clamp(0.0, 1.0));
 
-    final completedCount = allQuests
-        .where((q) => _completedQuests.contains(q.id))
-        .length;
-
     final filteredQuests = allQuests.where((q) {
       if (_questCategoryFilter == 'all') return true;
       return q.category == _questCategoryFilter;
@@ -2743,7 +2885,7 @@ class _MainPageState extends State<MainPage> {
         ),
         const SizedBox(height: 20),
 
-        // ─── Tab Toggle (Quests vs Coin Shop) ────────────────────
+        // Tab Toggle: Quests, Achievements, Coin Shop
         Container(
           padding: const EdgeInsets.all(4),
           decoration: BoxDecoration(
@@ -2756,7 +2898,7 @@ class _MainPageState extends State<MainPage> {
                 child: GestureDetector(
                   onTap: () => setState(() => _questTabSegment = 0),
                   child: Container(
-                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
                     decoration: BoxDecoration(
                       color: _questTabSegment == 0
                           ? _primaryColor
@@ -2765,11 +2907,35 @@ class _MainPageState extends State<MainPage> {
                     ),
                     child: Center(
                       child: Text(
-                        'Quests ($completedCount/${allQuests.length})',
+                        'Quests',
                         style: TextStyle(
                           fontWeight: FontWeight.bold,
-                          fontSize: 13,
+                          fontSize: 12,
                           color: _questTabSegment == 0 ? Colors.white : muted,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              Expanded(
+                child: GestureDetector(
+                  onTap: () => setState(() => _questTabSegment = 2),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    decoration: BoxDecoration(
+                      color: _questTabSegment == 2
+                          ? _primaryColor
+                          : Colors.transparent,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Center(
+                      child: Text(
+                        'Badges',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12,
+                          color: _questTabSegment == 2 ? Colors.white : muted,
                         ),
                       ),
                     ),
@@ -2780,7 +2946,7 @@ class _MainPageState extends State<MainPage> {
                 child: GestureDetector(
                   onTap: () => setState(() => _questTabSegment = 1),
                   child: Container(
-                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
                     decoration: BoxDecoration(
                       color: _questTabSegment == 1
                           ? _primaryColor
@@ -2788,21 +2954,13 @@ class _MainPageState extends State<MainPage> {
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Center(
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const Text('🪙 ', style: TextStyle(fontSize: 13)),
-                          Text(
-                            'Coin Shop',
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 13,
-                              color: _questTabSegment == 1
-                                  ? Colors.white
-                                  : muted,
-                            ),
-                          ),
-                        ],
+                      child: Text(
+                        'Coin Shop',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12,
+                          color: _questTabSegment == 1 ? Colors.white : muted,
+                        ),
                       ),
                     ),
                   ),
@@ -2811,6 +2969,7 @@ class _MainPageState extends State<MainPage> {
             ],
           ),
         ),
+
         const SizedBox(height: 18),
 
         // ─── Tab Content ─────────────────────────────────────────
@@ -2861,8 +3020,154 @@ class _MainPageState extends State<MainPage> {
             style: TextStyle(color: muted, fontSize: 12, height: 1.5),
             textAlign: TextAlign.center,
           ),
+        ] else if (_questTabSegment == 2) ...[
+          // Achievements View
+          Container(
+            padding: const EdgeInsets.all(18),
+            decoration: BoxDecoration(
+              color: surface,
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: _primaryColor.withValues(alpha: 0.35)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.emoji_events_rounded, color: gold, size: 28),
+                    const SizedBox(width: 12),
+                    const Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Your Achievements',
+                            style: TextStyle(
+                              fontSize: 17,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          SizedBox(height: 3),
+                          Text(
+                            'Every milestone tells a story.',
+                            style: TextStyle(color: muted, fontSize: 11),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 18),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: LinearProgressIndicator(
+                    value: allBadges.isEmpty
+                        ? 0
+                        : _earnedBadges.length / allBadges.length,
+                    minHeight: 8,
+                    backgroundColor: Colors.white12,
+                    valueColor: AlwaysStoppedAnimation<Color>(_primaryColor),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  '${_earnedBadges.length} of ${allBadges.length} badges unlocked',
+                  style: const TextStyle(
+                    color: lavender,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          ...allBadges.map((badge) {
+            final isUnlocked = _earnedBadges.contains(badge.id);
+
+            return Container(
+              margin: const EdgeInsets.only(bottom: 12),
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: surface,
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(
+                  color: isUnlocked
+                      ? gold.withValues(alpha: 0.55)
+                      : Colors.white12,
+                ),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 54,
+                    height: 54,
+                    decoration: BoxDecoration(
+                      color: isUnlocked
+                          ? gold.withValues(alpha: 0.15)
+                          : Colors.white.withValues(alpha: 0.05),
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: Icon(
+                      badge.icon,
+                      size: 29,
+                      color: isUnlocked ? gold : muted,
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          badge.title,
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 14,
+                            color: isUnlocked ? Colors.white : muted,
+                          ),
+                        ),
+                        const SizedBox(height: 5),
+                        Text(
+                          badge.description,
+                          style: const TextStyle(
+                            color: muted,
+                            fontSize: 11,
+                            height: 1.4,
+                          ),
+                        ),
+                        const SizedBox(height: 7),
+                        Text(
+                          isUnlocked ? 'UNLOCKED' : 'LOCKED',
+                          style: TextStyle(
+                            color: isUnlocked ? gold : muted,
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                            letterSpacing: 1,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Icon(
+                    isUnlocked
+                        ? Icons.check_circle_rounded
+                        : Icons.lock_rounded,
+                    color: isUnlocked ? gold : muted,
+                    size: 21,
+                  ),
+                ],
+              ),
+            );
+          }),
+          const SizedBox(height: 8),
+          const Text(
+            'Keep tracking your spending and completing quests to collect every badge.',
+            style: TextStyle(color: muted, fontSize: 12, height: 1.5),
+            textAlign: TextAlign.center,
+          ),
         ] else ...[
-          // ─── Coin Shop View ────────────────────────────────────
+          // Coin Shop View
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(

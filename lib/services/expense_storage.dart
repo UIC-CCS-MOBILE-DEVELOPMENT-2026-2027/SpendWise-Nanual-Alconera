@@ -26,6 +26,7 @@ class ExpenseStorage {
   static const String _questStorageKey = 'spendwise_quest_progress';
   static const String _streakStorageKey = 'spendwise_streak_data';
   static const String _shopStorageKey = 'spendwise_shop_data';
+  static const String _badgeStorageKey = 'spendwise_badges';
 
   Future<List<Expense>> loadExpenses() async {
     final prefs = await SharedPreferences.getInstance();
@@ -170,5 +171,32 @@ class ExpenseStorage {
   Future<bool> saveShopData(Map<String, dynamic> shopData) async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.setString(_shopStorageKey, jsonEncode(shopData));
+  }
+
+  Future<Set<String>> loadEarnedBadges() async {
+    final prefs = await SharedPreferences.getInstance();
+    final storedData = prefs.getString(_badgeStorageKey);
+
+    if (storedData == null || storedData.isEmpty) {
+      return <String>{};
+    }
+
+    try {
+      final decoded = jsonDecode(storedData);
+
+      if (decoded is List) {
+        return decoded.whereType<String>().toSet();
+      }
+    } catch (_) {
+      // Invalid badge data starts with an empty collection.
+    }
+
+    return <String>{};
+  }
+
+  Future<bool> saveEarnedBadges(Set<String> badgeIds) async {
+    final prefs = await SharedPreferences.getInstance();
+
+    return prefs.setString(_badgeStorageKey, jsonEncode(badgeIds.toList()));
   }
 }
