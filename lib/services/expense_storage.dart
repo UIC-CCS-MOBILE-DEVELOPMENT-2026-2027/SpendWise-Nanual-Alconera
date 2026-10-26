@@ -6,19 +6,6 @@ import '../models/expense.dart';
 import '../models/wallet.dart';
 
 class ExpenseStorage {
-  Future<Wallet> loadWallet() async {
-    final prefs = await SharedPreferences.getInstance();
-    final data = prefs.getString('spendwise_wallet');
-    return data == null
-        ? Wallet()
-        : Wallet.fromJson(jsonDecode(data) as Map<String, dynamic>);
-  }
-
-  Future<bool> saveWallet(Wallet wallet) async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.setString('spendwise_wallet', jsonEncode(wallet.toJson()));
-  }
-
   static const String _storageKey = 'spendwise_expenses';
   static const String _budgetStorageKey = 'spendwise_category_budgets';
   static const String _monthlyBudgetStorageKey =
@@ -27,7 +14,29 @@ class ExpenseStorage {
   static const String _streakStorageKey = 'spendwise_streak_data';
   static const String _shopStorageKey = 'spendwise_shop_data';
   static const String _badgeStorageKey = 'spendwise_badges';
+  static const String _challengeStorageKey =
+      'spendwise_challenge_progress';
 
+  // Wallet
+  Future<Wallet> loadWallet() async {
+    final prefs = await SharedPreferences.getInstance();
+    final data = prefs.getString('spendwise_wallet');
+
+    return data == null
+        ? Wallet()
+        : Wallet.fromJson(jsonDecode(data) as Map<String, dynamic>);
+  }
+
+  Future<bool> saveWallet(Wallet wallet) async {
+    final prefs = await SharedPreferences.getInstance();
+
+    return prefs.setString(
+      'spendwise_wallet',
+      jsonEncode(wallet.toJson()),
+    );
+  }
+
+  // Expenses
   Future<List<Expense>> loadExpenses() async {
     final prefs = await SharedPreferences.getInstance();
     final storedData = prefs.getString(_storageKey);
@@ -37,11 +46,14 @@ class ExpenseStorage {
     }
 
     try {
-      final List<dynamic> decoded = jsonDecode(storedData) as List<dynamic>;
+      final List<dynamic> decoded =
+          jsonDecode(storedData) as List<dynamic>;
 
       return decoded
           .map(
-            (item) => Expense.fromJson(Map<String, dynamic>.from(item as Map)),
+            (item) => Expense.fromJson(
+              Map<String, dynamic>.from(item as Map),
+            ),
           )
           .toList();
     } catch (_) {
@@ -59,6 +71,7 @@ class ExpenseStorage {
     return prefs.setString(_storageKey, encodedData);
   }
 
+  // Category budgets
   Future<Map<String, double>> loadBudgets() async {
     final prefs = await SharedPreferences.getInstance();
     final storedData = prefs.getString(_budgetStorageKey);
@@ -72,7 +85,8 @@ class ExpenseStorage {
           jsonDecode(storedData) as Map<String, dynamic>;
 
       return decoded.map(
-        (category, amount) => MapEntry(category, (amount as num).toDouble()),
+        (category, amount) =>
+            MapEntry(category, (amount as num).toDouble()),
       );
     } catch (_) {
       return {};
@@ -81,21 +95,29 @@ class ExpenseStorage {
 
   Future<bool> saveBudgets(Map<String, double> budgets) async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.setString(_budgetStorageKey, jsonEncode(budgets));
+
+    return prefs.setString(
+      _budgetStorageKey,
+      jsonEncode(budgets),
+    );
   }
 
-  // The overall budget persists when the calendar month changes.
-  // Only the spending total resets because it is calculated from dated expenses.
+  // Overall monthly budget
+  // The budget persists when the calendar month changes.
+  // Monthly spending is calculated from dated expenses.
   Future<double> loadMonthlyBudget() async {
     final prefs = await SharedPreferences.getInstance();
+
     return prefs.getDouble(_monthlyBudgetStorageKey) ?? 0.0;
   }
 
   Future<bool> saveMonthlyBudget(double amount) async {
     final prefs = await SharedPreferences.getInstance();
+
     return prefs.setDouble(_monthlyBudgetStorageKey, amount);
   }
 
+  // Money Quest progress
   Future<Map<String, dynamic>> loadQuestProgress() async {
     final prefs = await SharedPreferences.getInstance();
     final storedData = prefs.getString(_questStorageKey);
@@ -106,6 +128,7 @@ class ExpenseStorage {
 
     try {
       final decoded = jsonDecode(storedData);
+
       if (decoded is Map<String, dynamic>) {
         return decoded;
       }
@@ -116,34 +139,92 @@ class ExpenseStorage {
     return {};
   }
 
-  Future<bool> saveQuestProgress(Map<String, dynamic> progress) async {
+  Future<bool> saveQuestProgress(
+    Map<String, dynamic> progress,
+  ) async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.setString(_questStorageKey, jsonEncode(progress));
+
+    return prefs.setString(
+      _questStorageKey,
+      jsonEncode(progress),
+    );
   }
 
+  // Daily and Weekly Challenge progress
+  Future<Map<String, dynamic>> loadChallengeProgress() async {
+    final prefs = await SharedPreferences.getInstance();
+    final storedData = prefs.getString(_challengeStorageKey);
+
+    if (storedData == null || storedData.isEmpty) {
+      return {};
+    }
+
+    try {
+      final decoded = jsonDecode(storedData);
+
+      if (decoded is Map<String, dynamic>) {
+        return decoded;
+      }
+    } catch (_) {
+      // Invalid challenge data starts with fresh progress.
+    }
+
+    return {};
+  }
+
+  Future<bool> saveChallengeProgress(
+    Map<String, dynamic> progress,
+  ) async {
+    final prefs = await SharedPreferences.getInstance();
+
+    return prefs.setString(
+      _challengeStorageKey,
+      jsonEncode(progress),
+    );
+  }
+
+  // Streak data
   Future<Map<String, dynamic>> loadStreakData() async {
     final prefs = await SharedPreferences.getInstance();
     final storedData = prefs.getString(_streakStorageKey);
 
     if (storedData == null || storedData.isEmpty) {
-      return {'currentStreak': 0, 'bestStreak': 0, 'lastActiveDate': ''};
+      return {
+        'currentStreak': 0,
+        'bestStreak': 0,
+        'lastActiveDate': '',
+      };
     }
 
     try {
       final decoded = jsonDecode(storedData);
+
       if (decoded is Map<String, dynamic>) {
         return decoded;
       }
-    } catch (_) {}
+    } catch (_) {
+      // Invalid streak data starts with default values.
+    }
 
-    return {'currentStreak': 0, 'bestStreak': 0, 'lastActiveDate': ''};
+    return {
+      'currentStreak': 0,
+      'bestStreak': 0,
+      'lastActiveDate': '',
+    };
   }
 
-  Future<bool> saveStreakData(Map<String, dynamic> streakData) async {
+  Future<bool> saveStreakData(
+    Map<String, dynamic> streakData,
+  ) async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.setString(_streakStorageKey, jsonEncode(streakData));
+
+    return prefs.setString(
+      _streakStorageKey,
+      jsonEncode(streakData),
+    );
   }
 
+  // Coin Shop data
   Future<Map<String, dynamic>> loadShopData() async {
     final prefs = await SharedPreferences.getInstance();
     final storedData = prefs.getString(_shopStorageKey);
@@ -157,10 +238,13 @@ class ExpenseStorage {
 
     try {
       final decoded = jsonDecode(storedData);
+
       if (decoded is Map<String, dynamic>) {
         return decoded;
       }
-    } catch (_) {}
+    } catch (_) {
+      // Invalid shop data starts with default values.
+    }
 
     return {
       'selectedTheme': 'default',
@@ -168,11 +252,18 @@ class ExpenseStorage {
     };
   }
 
-  Future<bool> saveShopData(Map<String, dynamic> shopData) async {
+  Future<bool> saveShopData(
+    Map<String, dynamic> shopData,
+  ) async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.setString(_shopStorageKey, jsonEncode(shopData));
+
+    return prefs.setString(
+      _shopStorageKey,
+      jsonEncode(shopData),
+    );
   }
 
+  // Earned badges
   Future<Set<String>> loadEarnedBadges() async {
     final prefs = await SharedPreferences.getInstance();
     final storedData = prefs.getString(_badgeStorageKey);
@@ -197,6 +288,9 @@ class ExpenseStorage {
   Future<bool> saveEarnedBadges(Set<String> badgeIds) async {
     final prefs = await SharedPreferences.getInstance();
 
-    return prefs.setString(_badgeStorageKey, jsonEncode(badgeIds.toList()));
+    return prefs.setString(
+      _badgeStorageKey,
+      jsonEncode(badgeIds.toList()),
+    );
   }
 }

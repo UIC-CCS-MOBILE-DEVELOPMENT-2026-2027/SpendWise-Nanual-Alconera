@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 
 import 'models/expense.dart';
@@ -321,6 +323,92 @@ const List<BadgeDef> allBadges = [
   ),
 ];
 
+enum ChallengePeriod { daily, weekly }
+
+class ChallengeDef {
+  final String id;
+  final String title;
+  final String description;
+  final ChallengePeriod period;
+  final int goal;
+  final int xp;
+  final int coins;
+  final IconData icon;
+
+  const ChallengeDef({
+    required this.id,
+    required this.title,
+    required this.description,
+    required this.period,
+    required this.goal,
+    required this.xp,
+    required this.coins,
+    required this.icon,
+  });
+}
+
+const List<ChallengeDef> allChallenges = [
+  ChallengeDef(
+    id: 'daily_tracker',
+    title: 'Daily Tracker',
+    description: 'Record at least one expense today.',
+    period: ChallengePeriod.daily,
+    goal: 1,
+    xp: 20,
+    coins: 10,
+    icon: Icons.edit_calendar_rounded,
+  ),
+  ChallengeDef(
+    id: 'daily_variety',
+    title: 'Daily Variety',
+    description: 'Use two different expense categories today.',
+    period: ChallengePeriod.daily,
+    goal: 2,
+    xp: 30,
+    coins: 15,
+    icon: Icons.category_rounded,
+  ),
+  ChallengeDef(
+    id: 'weekly_consistency',
+    title: 'Weekly Consistency',
+    description: 'Record expenses on five different days this week.',
+    period: ChallengePeriod.weekly,
+    goal: 5,
+    xp: 60,
+    coins: 30,
+    icon: Icons.calendar_view_week_rounded,
+  ),
+  ChallengeDef(
+    id: 'weekly_explorer',
+    title: 'Weekly Explorer',
+    description: 'Use four different expense categories this week.',
+    period: ChallengePeriod.weekly,
+    goal: 4,
+    xp: 50,
+    coins: 25,
+    icon: Icons.explore_rounded,
+  ),
+];
+
+String _challengeDateKey(DateTime date) {
+  final year = date.year.toString().padLeft(4, '0');
+  final month = date.month.toString().padLeft(2, '0');
+  final day = date.day.toString().padLeft(2, '0');
+
+  return '$year-$month-$day';
+}
+
+String _challengeWeekKey(DateTime date) {
+  // Monday is the first day of the week.
+  final monday = DateTime(
+    date.year,
+    date.month,
+    date.day,
+  ).subtract(Duration(days: date.weekday - 1));
+
+  return _challengeDateKey(monday);
+}
+
 // ─── Theme Shop Definitions ────────────────────────────────────────
 
 class ThemeOption {
@@ -481,6 +569,14 @@ class MainPage extends StatefulWidget {
 class _MainPageState extends State<MainPage> {
   final ExpenseStorage _storage = ExpenseStorage();
 
+  DateTime _calendarMonth = DateTime(
+    DateTime.now().year,
+    DateTime.now().month,
+    1,
+  );
+
+  DateTime _selectedCalendarDay = DateTime.now();
+
   List<Expense> _expenses = [];
   Wallet _wallet = Wallet();
   bool _walletAvailable = false;
@@ -494,11 +590,16 @@ class _MainPageState extends State<MainPage> {
   final Set<String> _earnedBadges = {};
   bool _badgeStateLoaded = false;
 
+  // Daily and weekly challenge persistence.
+  Map<String, dynamic> _challengeProgress = {};
+  bool _challengeStateLoaded = false;
+  bool _updatingChallenges = false;
+
   int _currentStreak = 0;
   int _bestStreak = 0;
 
   Set<String> _unlockedThemes = {'default'};
-  int _questTabSegment = 0; // 0: Quests, 1: Coin Shop
+  int _questTabSegment = 0; // 0: Quests, 1: Coin Shop, 2: Badges, 3: Challenges
   String _questCategoryFilter = 'all'; // all, basics, budget, streak
 
   bool _loading = true;
@@ -524,6 +625,7 @@ class _MainPageState extends State<MainPage> {
       _loadStreak(),
       _loadShop(),
       _loadBadges(),
+      _loadChallengeProgress(),
     ]);
 
     if (!mounted) return;
@@ -531,6 +633,7 @@ class _MainPageState extends State<MainPage> {
     _recalculateStreak();
     setState(() => _loading = false);
     await _updateQuestProgress(showCelebration: false);
+    await _updateChallenges();
   }
 
   Future<void> _loadStreak() async {
@@ -837,6 +940,156 @@ class _MainPageState extends State<MainPage> {
       if (mounted) {
         setState(() => _badgeStateLoaded = true);
       }
+    }
+  }
+
+  Future<void> _loadChallengeProgress() async {
+    try {
+      final saved = await _storage.loadChallengeProgress();
+
+      if (!mounted) return;
+
+      setState(() {
+        _challengeProgress = saved;
+        _challengeStateLoaded = true;
+      });
+    } catch (error) {
+      debugPrint('Failed to load challenge progress: $error');
+
+      if (mounted) {
+        setState(() => _challengeStateLoaded = true);
+      }
+    }
+  }
+
+  Future<void> _updateChallenges() async {
+    if (!_challengeStateLoaded || !_questStateLoaded || _updatingChallenges) {
+      return;
+    }
+
+    _updatingChallenges = true;
+
+    try {
+      final now = DateTime.now();
+      final todayKey = _challengeDateKey(now);
+      final weekKey = _challengeWeekKey(now);
+
+      final todayExpenses = _expenses
+          .where((expense) => _challengeDateKey(expense.date) == todayKey)
+          .toList();
+
+      final weekExpenses = _expenses.where((expense) {
+        final expenseDate = DateTime(
+          expense.date.year,
+          expense.date.month,
+          expense.date.day,
+        );
+        final monday = DateTime(
+          now.year,
+          now.month,
+          now.day,
+        ).subtract(Duration(days: now.weekday - 1));
+
+        return !expenseDate.isBefore(monday) &&
+            expenseDate.isBefore(monday.add(const Duration(days: 7)));
+      }).toList();
+
+      final dailyCategories = todayExpenses
+          .map((expense) => expense.category)
+          .toSet();
+
+      final weeklyCategories = weekExpenses
+          .map((expense) => expense.category)
+          .toSet();
+
+      final activeDays = weekExpenses
+          .map((expense) => _challengeDateKey(expense.date))
+          .toSet();
+
+      final progressById = <String, int>{
+        'daily_tracker': todayExpenses.isNotEmpty ? 1 : 0,
+        'daily_variety': dailyCategories.length,
+        'weekly_consistency': activeDays.length,
+        'weekly_explorer': weeklyCategories.length,
+      };
+
+      final updated = Map<String, dynamic>.from(_challengeProgress);
+      final completed = <String>[];
+      var earnedXp = 0;
+      var earnedCoins = 0;
+
+      for (final challenge in allChallenges) {
+        final periodKey = challenge.period == ChallengePeriod.daily
+            ? todayKey
+            : weekKey;
+
+        final recordKey = '${challenge.id}_$periodKey';
+        final progress = progressById[challenge.id] ?? 0;
+        final isComplete = progress >= challenge.goal;
+
+        if (isComplete && updated[recordKey] != true) {
+          updated[recordKey] = true;
+          completed.add(challenge.title);
+          earnedXp += challenge.xp;
+          earnedCoins += challenge.coins;
+        }
+      }
+
+      final progressChanged =
+          jsonEncode(updated) != jsonEncode(_challengeProgress);
+
+      if (earnedXp > 0 || earnedCoins > 0) {
+        _questXp += earnedXp;
+        _questCoins += earnedCoins;
+
+        final questSaved = await _storage.saveQuestProgress({
+          'xp': _questXp,
+          'coins': _questCoins,
+          'completedQuests': _completedQuests.toList(),
+        });
+
+        if (!questSaved) {
+          _questXp -= earnedXp;
+          _questCoins -= earnedCoins;
+
+          if (mounted) {
+            _message('Challenge rewards could not be saved.');
+          }
+          return;
+        }
+      }
+
+      if (progressChanged) {
+        final challengeSaved = await _storage.saveChallengeProgress(updated);
+
+        if (!challengeSaved) {
+          if (mounted) {
+            _message('Challenge completion could not be saved.');
+          }
+          return;
+        }
+
+        _challengeProgress = updated;
+      }
+
+      if (mounted) {
+        setState(() {});
+      }
+
+      if (completed.isNotEmpty && mounted) {
+        _message(
+          'Challenge completed: ${completed.join(', ')}! '
+          '+$earnedXp XP and +$earnedCoins coins.',
+        );
+      }
+    } catch (error) {
+      debugPrint('Failed to update challenges: $error');
+
+      if (mounted) {
+        _message('Could not update challenge progress.');
+      }
+    } finally {
+      _updatingChallenges = false;
     }
   }
 
@@ -1332,6 +1585,7 @@ class _MainPageState extends State<MainPage> {
       } else {
         _message('Monthly budget saved.');
         await _updateQuestProgress(showCelebration: true);
+        await _updateChallenges();
       }
     } catch (error) {
       debugPrint('Failed to save monthly budget: $error');
@@ -1609,6 +1863,7 @@ class _MainPageState extends State<MainPage> {
       }
 
       await _updateQuestProgress(showCelebration: true);
+      await _updateChallenges();
 
       if (!mounted) return;
 
@@ -1657,6 +1912,7 @@ class _MainPageState extends State<MainPage> {
     }
 
     await _updateQuestProgress(showCelebration: false);
+    await _updateChallenges();
 
     if (mounted) _message('Expense deleted.');
   }
@@ -1669,6 +1925,7 @@ class _MainPageState extends State<MainPage> {
       'Insights',
       'Money Quest',
       'Monthly budgets',
+      'Calendar',
     ];
 
     return Scaffold(
@@ -1685,6 +1942,7 @@ class _MainPageState extends State<MainPage> {
                 _buildInsights(),
                 _buildQuest(),
                 _buildBudgets(),
+                _buildCalendar(),
               ],
             ),
       floatingActionButton: _selectedTab == 0 || _selectedTab == 1
@@ -1728,6 +1986,11 @@ class _MainPageState extends State<MainPage> {
             icon: Icon(Icons.account_balance_wallet_outlined),
             selectedIcon: Icon(Icons.account_balance_wallet_rounded),
             label: 'Budget',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.calendar_month_outlined),
+            selectedIcon: Icon(Icons.calendar_month_rounded),
+            label: 'Calendar',
           ),
         ],
       ),
@@ -2549,6 +2812,277 @@ class _MainPageState extends State<MainPage> {
     );
   }
 
+  Widget _buildCalendar() {
+    final firstDay = DateTime(_calendarMonth.year, _calendarMonth.month, 1);
+    final daysInMonth = DateTime(
+      _calendarMonth.year,
+      _calendarMonth.month + 1,
+      0,
+    ).day;
+    final startingWeekday = firstDay.weekday % 7;
+    final selectedExpenses = _expenses.where((expense) {
+      return expense.date.year == _selectedCalendarDay.year &&
+          expense.date.month == _selectedCalendarDay.month &&
+          expense.date.day == _selectedCalendarDay.day;
+    }).toList()..sort((a, b) => b.date.compareTo(a.date));
+
+    final selectedTotal = selectedExpenses.fold<double>(
+      0,
+      (sum, expense) => sum + expense.amount,
+    );
+
+    final monthlyTotal = _expenses
+        .where(
+          (expense) =>
+              expense.date.year == _calendarMonth.year &&
+              expense.date.month == _calendarMonth.month,
+        )
+        .fold<double>(0, (sum, expense) => sum + expense.amount);
+
+    final calendarCells = <Widget>[];
+
+    for (var i = 0; i < startingWeekday; i++) {
+      calendarCells.add(const SizedBox.shrink());
+    }
+
+    for (var day = 1; day <= daysInMonth; day++) {
+      final date = DateTime(_calendarMonth.year, _calendarMonth.month, day);
+
+      final dayExpenses = _expenses.where(
+        (expense) =>
+            expense.date.year == date.year &&
+            expense.date.month == date.month &&
+            expense.date.day == date.day,
+      );
+
+      final dayTotal = dayExpenses.fold<double>(
+        0,
+        (sum, expense) => sum + expense.amount,
+      );
+
+      final isSelected =
+          date.year == _selectedCalendarDay.year &&
+          date.month == _selectedCalendarDay.month &&
+          date.day == _selectedCalendarDay.day;
+
+      final isToday =
+          date.year == DateTime.now().year &&
+          date.month == DateTime.now().month &&
+          date.day == DateTime.now().day;
+
+      calendarCells.add(
+        InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: () => setState(() => _selectedCalendarDay = date),
+          child: Container(
+            margin: const EdgeInsets.all(2),
+            decoration: BoxDecoration(
+              color: isSelected
+                  ? _primaryColor.withValues(alpha: 0.28)
+                  : Colors.transparent,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: isSelected
+                    ? _primaryColor
+                    : isToday
+                    ? _primaryColor.withValues(alpha: 0.55)
+                    : Colors.transparent,
+              ),
+            ),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  '$day',
+                  style: TextStyle(
+                    color: isSelected ? Colors.white : Colors.white70,
+                    fontWeight: isSelected || isToday
+                        ? FontWeight.bold
+                        : FontWeight.normal,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                if (dayTotal > 0)
+                  Container(
+                    width: 5,
+                    height: 5,
+                    decoration: BoxDecoration(
+                      color: isSelected ? Colors.white : _primaryColor,
+                      shape: BoxShape.circle,
+                    ),
+                  )
+                else
+                  const SizedBox(height: 5),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 110),
+      children: [
+        Container(
+          padding: const EdgeInsets.all(18),
+          decoration: BoxDecoration(
+            color: const Color(0xFF1C2035),
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Monthly spending',
+                style: TextStyle(color: muted, fontSize: 13),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                peso(monthlyTotal),
+                style: const TextStyle(
+                  fontSize: 28,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  IconButton(
+                    tooltip: 'Previous month',
+                    onPressed: () {
+                      setState(() {
+                        _calendarMonth = DateTime(
+                          _calendarMonth.year,
+                          _calendarMonth.month - 1,
+                          1,
+                        );
+                        _selectedCalendarDay = DateTime(
+                          _calendarMonth.year,
+                          _calendarMonth.month,
+                          1,
+                        );
+                      });
+                    },
+                    icon: const Icon(Icons.chevron_left_rounded),
+                  ),
+                  Expanded(
+                    child: Text(
+                      dateLabel(_calendarMonth),
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: 'Next month',
+                    onPressed: () {
+                      setState(() {
+                        _calendarMonth = DateTime(
+                          _calendarMonth.year,
+                          _calendarMonth.month + 1,
+                          1,
+                        );
+                        _selectedCalendarDay = DateTime(
+                          _calendarMonth.year,
+                          _calendarMonth.month,
+                          1,
+                        );
+                      });
+                    },
+                    icon: const Icon(Icons.chevron_right_rounded),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+                    .map(
+                      (label) => Expanded(
+                        child: Center(
+                          child: Text(
+                            label,
+                            style: const TextStyle(color: muted, fontSize: 11),
+                          ),
+                        ),
+                      ),
+                    )
+                    .toList(),
+              ),
+              const SizedBox(height: 8),
+              GridView.count(
+                crossAxisCount: 7,
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                childAspectRatio: 0.85,
+                children: calendarCells,
+              ),
+              const SizedBox(height: 8),
+              const Row(
+                children: [
+                  Icon(Icons.circle, size: 8, color: Color(0xFF7958FF)),
+                  SizedBox(width: 7),
+                  Text(
+                    'Days with recorded expenses',
+                    style: TextStyle(color: muted, fontSize: 11),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 22),
+        Text(
+          '${_selectedCalendarDay.day} ${_monthName(_selectedCalendarDay.month)} ${_selectedCalendarDay.year}',
+          style: const TextStyle(fontSize: 19, fontWeight: FontWeight.bold),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          'Total: ${peso(selectedTotal)}',
+          style: TextStyle(
+            color: _primaryColor,
+            fontSize: 17,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        const SizedBox(height: 14),
+        if (selectedExpenses.isEmpty)
+          const _EmptyState(
+            icon: Icons.event_note_rounded,
+            title: 'No expenses on this day',
+            message: 'Choose another date or add a new expense.',
+          )
+        else
+          ...selectedExpenses.map(
+            (expense) => _TransactionTile(
+              expense: expense,
+              onTap: () => _openExpenseForm(expense: expense),
+              onDelete: () => _deleteExpense(expense),
+            ),
+          ),
+      ],
+    );
+  }
+
+  String _monthName(int month) {
+    const months = [
+      'January',
+      'February',
+      'March',
+      'April',
+      'May',
+      'June',
+      'July',
+      'August',
+      'September',
+      'October',
+      'November',
+      'December',
+    ];
+    return months[month - 1];
+  }
+
   Widget _buildInsights() {
     if (_expenses.isEmpty) {
       return const _EmptyState(
@@ -2966,6 +3500,30 @@ class _MainPageState extends State<MainPage> {
                   ),
                 ),
               ),
+              Expanded(
+                child: GestureDetector(
+                  onTap: () => setState(() => _questTabSegment = 3),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    decoration: BoxDecoration(
+                      color: _questTabSegment == 3
+                          ? _primaryColor
+                          : Colors.transparent,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Center(
+                      child: Text(
+                        'Challenges',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 11,
+                          color: _questTabSegment == 3 ? Colors.white : muted,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
             ],
           ),
         ),
@@ -3166,7 +3724,7 @@ class _MainPageState extends State<MainPage> {
             style: TextStyle(color: muted, fontSize: 12, height: 1.5),
             textAlign: TextAlign.center,
           ),
-        ] else ...[
+        ] else if (_questTabSegment == 1) ...[
           // Coin Shop View
           Container(
             padding: const EdgeInsets.all(16),
@@ -3325,8 +3883,295 @@ class _MainPageState extends State<MainPage> {
               ),
             );
           }),
+        ] else ...[
+          // Daily and Weekly Challenges View
+          Container(
+            padding: const EdgeInsets.all(18),
+            decoration: BoxDecoration(
+              color: surface,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: _primaryColor.withValues(alpha: 0.3)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      width: 48,
+                      height: 48,
+                      decoration: BoxDecoration(
+                        color: _primaryColor.withValues(alpha: 0.18),
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      child: Icon(
+                        Icons.flag_rounded,
+                        color: _primaryColor,
+                        size: 26,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    const Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Challenge Board',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          SizedBox(height: 4),
+                          Text(
+                            'Build better money habits, one day at a time.',
+                            style: TextStyle(
+                              color: muted,
+                              fontSize: 12,
+                              height: 1.4,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 18),
+                Row(
+                  children: [
+                    const Icon(Icons.stars_rounded, color: gold, size: 19),
+                    const SizedBox(width: 7),
+                    Text(
+                      'Available rewards: $_questXp XP earned',
+                      style: const TextStyle(fontSize: 12, color: muted),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 22),
+          const Text(
+            'DAILY CHALLENGES',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.bold,
+              color: muted,
+              letterSpacing: 1.2,
+            ),
+          ),
+          const SizedBox(height: 12),
+          ...allChallenges
+              .where((challenge) => challenge.period == ChallengePeriod.daily)
+              .map(_buildChallengeCard),
+          const SizedBox(height: 22),
+          const Text(
+            'WEEKLY CHALLENGES',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.bold,
+              color: muted,
+              letterSpacing: 1.2,
+            ),
+          ),
+          const SizedBox(height: 12),
+          ...allChallenges
+              .where((challenge) => challenge.period == ChallengePeriod.weekly)
+              .map(_buildChallengeCard),
         ],
       ],
+    );
+  }
+
+  Widget _buildChallengeCard(ChallengeDef challenge) {
+    final now = DateTime.now();
+    final periodKey = challenge.period == ChallengePeriod.daily
+        ? _challengeDateKey(now)
+        : _challengeWeekKey(now);
+    final recordKey = '${challenge.id}_$periodKey';
+
+    final todayExpenses = _expenses
+        .where(
+          (expense) =>
+              _challengeDateKey(expense.date) == _challengeDateKey(now),
+        )
+        .toList();
+
+    final monday = DateTime(
+      now.year,
+      now.month,
+      now.day,
+    ).subtract(Duration(days: now.weekday - 1));
+    final nextMonday = monday.add(const Duration(days: 7));
+
+    final weeklyExpenses = _expenses.where((expense) {
+      final date = DateTime(
+        expense.date.year,
+        expense.date.month,
+        expense.date.day,
+      );
+      return !date.isBefore(monday) && date.isBefore(nextMonday);
+    }).toList();
+
+    final progress = switch (challenge.id) {
+      'daily_tracker' => todayExpenses.isNotEmpty ? 1 : 0,
+      'daily_variety' =>
+        todayExpenses.map((expense) => expense.category).toSet().length,
+      'weekly_consistency' =>
+        weeklyExpenses
+            .map((expense) => _challengeDateKey(expense.date))
+            .toSet()
+            .length,
+      'weekly_explorer' =>
+        weeklyExpenses.map((expense) => expense.category).toSet().length,
+      _ => 0,
+    };
+
+    final isComplete = progress >= challenge.goal;
+    final isRewardClaimed = _challengeProgress[recordKey] == true;
+    final fraction = (progress / challenge.goal).clamp(0.0, 1.0).toDouble();
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: surface,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: isRewardClaimed
+              ? gold.withValues(alpha: 0.45)
+              : Colors.white10,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: (isRewardClaimed ? gold : _primaryColor).withValues(
+                    alpha: 0.16,
+                  ),
+                  borderRadius: BorderRadius.circular(13),
+                ),
+                child: Icon(
+                  isRewardClaimed ? Icons.check_circle_rounded : challenge.icon,
+                  color: isRewardClaimed ? gold : _primaryColor,
+                  size: 23,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      challenge.title,
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      challenge.description,
+                      style: const TextStyle(
+                        color: muted,
+                        fontSize: 12,
+                        height: 1.4,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (isRewardClaimed)
+                const Icon(Icons.verified_rounded, color: gold, size: 22),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                '$progress / ${challenge.goal}',
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 12,
+                ),
+              ),
+              Text(
+                isRewardClaimed
+                    ? 'Reward earned'
+                    : isComplete
+                    ? 'Completed'
+                    : 'In progress',
+                style: TextStyle(
+                  color: isRewardClaimed
+                      ? gold
+                      : isComplete
+                      ? Colors.greenAccent
+                      : muted,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(20),
+            child: LinearProgressIndicator(
+              value: fraction,
+              minHeight: 7,
+              backgroundColor: Colors.white10,
+              valueColor: AlwaysStoppedAnimation<Color>(
+                isRewardClaimed ? gold : _primaryColor,
+              ),
+            ),
+          ),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              const Icon(Icons.bolt_rounded, color: gold, size: 19),
+              const SizedBox(width: 4),
+              Text(
+                '+${challenge.xp} XP',
+                style: const TextStyle(
+                  color: gold,
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(width: 14),
+              const Icon(Icons.monetization_on_rounded, color: gold, size: 17),
+              const SizedBox(width: 4),
+              Text(
+                '+${challenge.coins} coins',
+                style: const TextStyle(
+                  color: gold,
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const Spacer(),
+              if (isRewardClaimed)
+                const Text(
+                  'CLAIMED',
+                  style: TextStyle(
+                    color: gold,
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 0.8,
+                  ),
+                ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 

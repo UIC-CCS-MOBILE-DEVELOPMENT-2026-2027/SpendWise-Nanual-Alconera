@@ -1,6 +1,6 @@
 import 'expense.dart';
 
-const defaultAccounts = ['Cash on Hand', 'Bank', 'GCash'];
+const defaultAccounts = ['Cash on Hand', 'Bank', 'E-Wallet'];
 
 class Transfer {
   final String id;

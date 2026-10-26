@@ -1087,7 +1087,7 @@ class _AccountDialogState extends State<_AccountDialog> {
               maxLength: 40,
               decoration: const InputDecoration(
                 labelText: 'Account name',
-                hintText: 'e.g. Cash on Hand, GCash, Savings',
+                hintText: 'e.g. Cash on Hand, E-Wallet, Savings',
                 prefixIcon: Icon(Icons.account_balance_wallet_outlined),
                 border: OutlineInputBorder(),
               ),
