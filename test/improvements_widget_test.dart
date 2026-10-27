@@ -165,4 +165,101 @@ void main() {
     );
     expect(await ExpenseStorage().loadExpenses(), isEmpty);
   });
+  testWidgets(
+    'editing a monthly budget uses a placeholder and keeps an unchanged limit',
+    (tester) async {
+      final storage = ExpenseStorage();
+      await storage.saveMonthlyBudget(5000);
+      await tester.pumpWidget(const SpendWiseApp());
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Budget'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Edit overall budget'));
+      await tester.pumpAndSettle();
+      final field = tester.widget<TextFormField>(find.byType(TextFormField));
+      expect(field.controller!.text, isEmpty);
+      expect(find.text('5000.00'), findsOneWidget);
+      await tester.tap(find.text('Save budget'));
+      await tester.pumpAndSettle();
+      expect(await storage.loadMonthlyBudget(), 5000);
+      expect(find.text('Overall monthly budget').hitTestable(), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'account rename with a blank balance preserves the opening funds',
+    (tester) async {
+      final storage = ExpenseStorage();
+      await storage.saveWallet(Wallet(openingBalances: {'Bank': 1234.56}));
+      await tester.pumpWidget(const SpendWiseApp());
+      await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(
+        find.widgetWithText(OutlinedButton, 'Edit'),
+        250,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.ensureVisible(find.widgetWithText(OutlinedButton, 'Edit'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(OutlinedButton, 'Edit'));
+      await tester.pumpAndSettle();
+      final fields = find.byType(TextFormField);
+      final balance = tester.widget<TextFormField>(fields.at(1));
+      expect(balance.controller!.text, isEmpty);
+      expect(find.text('1234.56'), findsOneWidget);
+      await tester.enterText(fields.at(0), 'Savings');
+      await tester.tap(find.text('Save changes'));
+      await tester.pumpAndSettle();
+      final wallet = await storage.loadWallet();
+      expect(wallet.openingBalances['Savings'], 1234.56);
+      expect(wallet.openingBalances.containsKey('Bank'), false);
+    },
+  );
+
+  testWidgets('history and calendar expose direct edit and delete actions', (
+    tester,
+  ) async {
+    await ExpenseStorage().saveExpenses([
+      Expense(
+        id: 'icons',
+        description: 'Icon test',
+        amount: 42,
+        category: 'Food & Dining',
+        date: DateTime.now(),
+      ),
+    ]);
+    await tester.pumpWidget(const SpendWiseApp());
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Expenses'));
+    await tester.pumpAndSettle();
+    expect(find.byTooltip('Edit expense'), findsOneWidget);
+    expect(find.byTooltip('Delete expense'), findsOneWidget);
+    await tester.ensureVisible(
+      find.widgetWithIcon(IconButton, Icons.edit_outlined),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithIcon(IconButton, Icons.edit_outlined));
+    await tester.pumpAndSettle();
+    expect(find.byType(ExpenseForm), findsOneWidget);
+    await tester.tap(find.byTooltip('Close expense form'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Calendar'));
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.byTooltip('Delete expense'),
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.ensureVisible(
+      find.widgetWithIcon(IconButton, Icons.delete_outline_rounded),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.widgetWithIcon(IconButton, Icons.delete_outline_rounded),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Delete expense?'), findsOneWidget);
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+    expect((await ExpenseStorage().loadExpenses()).length, 1);
+  });
 }

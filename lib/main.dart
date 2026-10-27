@@ -3,6 +3,7 @@ import 'domain/money.dart';
 import 'domain/reward_engine.dart';
 import 'backup_dialog.dart';
 import 'expense_history.dart';
+import 'expense_actions.dart';
 
 import 'package:flutter/material.dart';
 
@@ -3797,9 +3798,7 @@ class _MonthlyBudgetDialogState extends State<_MonthlyBudgetDialog> {
   @override
   void initState() {
     super.initState();
-    _controller = TextEditingController(
-      text: widget.initialAmount.toStringAsFixed(2),
-    );
+    _controller = TextEditingController();
   }
 
   @override
@@ -3811,8 +3810,10 @@ class _MonthlyBudgetDialogState extends State<_MonthlyBudgetDialog> {
   void _save() {
     if (!(_formKey.currentState?.validate() ?? false)) return;
 
-    final amount = double.tryParse(_controller.text.trim());
-    if (amount == null || !amount.isFinite || amount <= 0) return;
+    final amount = _controller.text.trim().isEmpty
+        ? widget.initialAmount
+        : Money.parse(_controller.text)! / 100;
+    if (!amount.isFinite || amount <= 0) return;
 
     FocusScope.of(context).unfocus();
     Navigator.of(context).pop(amount);
@@ -3841,12 +3842,22 @@ class _MonthlyBudgetDialogState extends State<_MonthlyBudgetDialog> {
               keyboardType: const TextInputType.numberWithOptions(
                 decimal: true,
               ),
-              decoration: const InputDecoration(
+              decoration: InputDecoration(
                 labelText: 'Monthly spending limit',
                 prefixText: '\u20B1 ',
-                hintText: '0.00',
+                hintText: widget.initialAmount > 0
+                    ? widget.initialAmount.toStringAsFixed(2)
+                    : 'e.g. 5000.00',
+                helperText: widget.initialAmount > 0
+                    ? 'Leave blank to keep your current limit.'
+                    : 'Enter your monthly spending limit.',
+                helperMaxLines: 2,
               ),
               validator: (value) {
+                if ((value?.trim().isEmpty ?? true) &&
+                    widget.initialAmount > 0) {
+                  return null;
+                }
                 final amount = Money.parse(value ?? '') == null
                     ? null
                     : Money.parse(value ?? '')! / 100;
@@ -4095,6 +4106,40 @@ class _ExpenseFormState extends State<ExpenseForm> {
     );
   }
 
+  InputDecoration _fieldDecoration(
+    String label,
+    IconData icon, {
+    String? hint,
+    String? prefix,
+  }) {
+    final border = OutlineInputBorder(
+      borderRadius: BorderRadius.circular(14),
+      borderSide: const BorderSide(color: Colors.white24),
+    );
+    return InputDecoration(
+      labelText: label,
+      hintText: hint,
+      prefixText: prefix,
+      prefixIcon: Icon(icon),
+      filled: true,
+      fillColor: navy,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
+      border: border,
+      enabledBorder: border,
+      focusedBorder: border.copyWith(
+        borderSide: BorderSide(
+          color: Theme.of(context).colorScheme.primary,
+          width: 1.5,
+        ),
+      ),
+      errorBorder: border.copyWith(borderSide: const BorderSide(color: danger)),
+      focusedErrorBorder: border.copyWith(
+        borderSide: const BorderSide(color: danger, width: 1.5),
+      ),
+      errorMaxLines: 2,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Padding(
@@ -4122,7 +4167,8 @@ class _ExpenseFormState extends State<ExpenseForm> {
                       ),
                     ),
                   ),
-                  IconButton(
+                  IconButton.filledTonal(
+                    tooltip: 'Close expense form',
                     onPressed: () => Navigator.pop(context),
                     icon: const Icon(Icons.close_rounded),
                   ),
@@ -4134,14 +4180,14 @@ class _ExpenseFormState extends State<ExpenseForm> {
                 style: TextStyle(color: muted),
               ),
               const SizedBox(height: 22),
-              const Text('Description'),
-              const SizedBox(height: 8),
               TextFormField(
                 controller: _descriptionController,
                 textCapitalization: TextCapitalization.sentences,
-                decoration: const InputDecoration(
-                  hintText: 'e.g. Lunch, bus fare, groceries',
-                  prefixIcon: Icon(Icons.edit_note_rounded),
+                textInputAction: TextInputAction.next,
+                decoration: _fieldDecoration(
+                  'Description',
+                  Icons.edit_note_rounded,
+                  hint: 'e.g. Lunch, bus fare, groceries',
                 ),
                 validator: (value) {
                   if (value == null || value.trim().isEmpty) {
@@ -4156,17 +4202,17 @@ class _ExpenseFormState extends State<ExpenseForm> {
                 },
               ),
               const SizedBox(height: 18),
-              const Text('Amount (PHP)'),
-              const SizedBox(height: 8),
               TextFormField(
                 controller: _amountController,
                 keyboardType: const TextInputType.numberWithOptions(
                   decimal: true,
                 ),
-                decoration: const InputDecoration(
-                  hintText: '0.00',
-                  prefixText: '\u20B1 ',
-                  prefixIcon: Icon(Icons.payments_outlined),
+                textInputAction: TextInputAction.done,
+                decoration: _fieldDecoration(
+                  'Amount (PHP)',
+                  Icons.payments_outlined,
+                  hint: 'e.g. 150.00',
+                  prefix: '₱ ',
                 ),
                 validator: (value) {
                   final amount = Money.parse(value ?? '') == null
@@ -4188,7 +4234,10 @@ class _ExpenseFormState extends State<ExpenseForm> {
               DropdownButtonFormField<String>(
                 initialValue: _account,
                 isExpanded: true,
-                decoration: const InputDecoration(labelText: 'Paid from'),
+                decoration: _fieldDecoration(
+                  'Paid from',
+                  Icons.account_balance_wallet_outlined,
+                ),
                 items: widget.accounts
                     .map(
                       (name) =>
@@ -4200,13 +4249,12 @@ class _ExpenseFormState extends State<ExpenseForm> {
                 },
               ),
               const SizedBox(height: 18),
-              const Text('Category'),
-              const SizedBox(height: 8),
               DropdownButtonFormField<String>(
                 initialValue: _category,
                 isExpanded: true,
-                decoration: const InputDecoration(
-                  prefixIcon: Icon(Icons.category_outlined),
+                decoration: _fieldDecoration(
+                  'Category',
+                  Icons.category_outlined,
                 ),
                 items: categories
                     .map(
@@ -4221,22 +4269,16 @@ class _ExpenseFormState extends State<ExpenseForm> {
                 },
               ),
               const SizedBox(height: 18),
-              const Text('Date'),
-              const SizedBox(height: 8),
               InkWell(
                 onTap: _chooseDate,
                 borderRadius: BorderRadius.circular(14),
-                child: Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: navy,
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: Colors.white12),
+                child: InputDecorator(
+                  decoration: _fieldDecoration(
+                    'Date',
+                    Icons.calendar_month_outlined,
                   ),
                   child: Row(
                     children: [
-                      const Icon(Icons.calendar_month_rounded, color: lavender),
-                      const SizedBox(width: 12),
                       Expanded(child: Text(dateLabel(_date))),
                       const Icon(Icons.keyboard_arrow_down_rounded),
                     ],
@@ -4436,17 +4478,7 @@ class _TransactionTile extends StatelessWidget {
             '${expense.category} · ${expense.account} · ${dateLabel(expense.date)}',
             style: const TextStyle(color: muted, fontSize: 11),
           ),
-          trailing: PopupMenuButton<String>(
-            icon: const Icon(Icons.more_vert_rounded, color: muted),
-            onSelected: (value) {
-              if (value == 'edit') onTap();
-              if (value == 'delete') onDelete();
-            },
-            itemBuilder: (_) => const [
-              PopupMenuItem(value: 'edit', child: Text('Edit expense')),
-              PopupMenuItem(value: 'delete', child: Text('Delete expense')),
-            ],
-          ),
+          trailing: ExpenseActions(onEdit: onTap, onDelete: onDelete),
           onTap: onTap,
         ),
       ),

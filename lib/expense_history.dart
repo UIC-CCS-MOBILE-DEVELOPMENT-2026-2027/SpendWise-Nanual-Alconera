@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'domain/money.dart';
 import 'models/expense.dart';
+import 'expense_actions.dart';
 
 class ExpenseHistory extends StatefulWidget {
   final List<Expense> expenses;
@@ -140,28 +141,27 @@ class _ExpenseHistoryState extends State<ExpenseHistory> {
           child: ListTile(
             onTap: () => widget.onEdit(expense),
             title: Text(expense.description),
-            subtitle: Text(
-              '${expense.category}\n${expense.account} · ${dayKey(expense.date)}',
-            ),
-            isThreeLine: true,
-            trailing: Row(
+            subtitle: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
+                const SizedBox(height: 4),
                 Text(
                   '₱${expense.amount.toStringAsFixed(2)}',
-                  style: const TextStyle(fontWeight: FontWeight.bold),
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: widget.primaryColor,
+                  ),
                 ),
-                PopupMenuButton<String>(
-                  tooltip: 'Actions for ${expense.description}',
-                  onSelected: (action) => action == 'edit'
-                      ? widget.onEdit(expense)
-                      : widget.onDelete(expense),
-                  itemBuilder: (_) => const [
-                    PopupMenuItem(value: 'edit', child: Text('Edit')),
-                    PopupMenuItem(value: 'delete', child: Text('Delete')),
-                  ],
+                const SizedBox(height: 4),
+                Text(
+                  '${expense.category}\n${expense.account} · ${dayKey(expense.date)}',
                 ),
               ],
+            ),
+            trailing: ExpenseActions(
+              onEdit: () => widget.onEdit(expense),
+              onDelete: () => widget.onDelete(expense),
             ),
           ),
         );

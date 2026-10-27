@@ -1038,11 +1038,9 @@ class _AccountDialogState extends State<_AccountDialog> {
 
   late final _name = TextEditingController(text: widget.account ?? '');
 
-  late final _amount = TextEditingController(
-    text: (widget.wallet.openingBalances[widget.account] ?? 0).toStringAsFixed(
-      2,
-    ),
-  );
+  late final _amount = TextEditingController();
+  double get _currentOpeningBalance =>
+      widget.wallet.openingBalances[widget.account] ?? 0;
 
   @override
   void dispose() {
@@ -1109,13 +1107,21 @@ class _AccountDialogState extends State<_AccountDialog> {
                 decimal: true,
               ),
               textInputAction: TextInputAction.done,
-              decoration: const InputDecoration(
+              decoration: InputDecoration(
                 labelText: 'Opening balance',
+                hintText: widget.account == null
+                    ? 'e.g. 1000.00'
+                    : _currentOpeningBalance.toStringAsFixed(2),
+                helperText: widget.account == null
+                    ? 'Optional. Starts at ₱0.00.'
+                    : 'Leave blank to keep the current opening balance.',
+                helperMaxLines: 2,
                 prefixText: '₱ ',
-                prefixIcon: Icon(Icons.payments_outlined),
-                border: OutlineInputBorder(),
+                prefixIcon: const Icon(Icons.payments_outlined),
+                border: const OutlineInputBorder(),
               ),
               validator: (value) {
+                if (value?.trim().isEmpty ?? true) return null;
                 final amount = Money.parse(value ?? '', allowZero: true) == null
                     ? null
                     : Money.parse(value ?? '', allowZero: true)! / 100;
@@ -1166,7 +1172,9 @@ class _AccountDialogState extends State<_AccountDialog> {
             if (!_form.currentState!.validate()) return;
 
             final name = _name.text.trim();
-            final amount = double.parse(_amount.text.trim());
+            final amount = _amount.text.trim().isEmpty
+                ? _currentOpeningBalance
+                : Money.parse(_amount.text, allowZero: true)! / 100;
 
             Navigator.pop(context, MapEntry<String, double>(name, amount));
           },
