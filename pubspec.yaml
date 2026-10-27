@@ -2,7 +2,7 @@ name: spendwise
 description: "A gamified expense tracking application."
 publish_to: 'none'
 
-version: 1.0.0+1
+version: 1.1.0+2
 
 environment:
   sdk: ^3.12.2
@@ -18,6 +18,8 @@ dev_dependencies:
     sdk: flutter
   flutter_lints: ^6.0.0
 
+# Retain the tested Android implementation floor (includes release-startup fixes).
+# Re-evaluate only alongside Android release smoke tests.
 dependency_overrides:
   shared_preferences_android: ^2.5.3
 

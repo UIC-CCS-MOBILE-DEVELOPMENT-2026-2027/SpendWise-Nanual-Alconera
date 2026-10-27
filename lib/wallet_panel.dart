@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'models/expense.dart';
+import 'domain/money.dart';
 import 'models/wallet.dart';
 
 String _money(double value) => '₱${value.toStringAsFixed(2)}';
@@ -56,10 +57,10 @@ class _WalletPanelState extends State<WalletPanel> {
   }
 
   double get _totalBalance {
-    return _accounts.fold<double>(
-      0,
-      (total, account) =>
-          total + widget.wallet.balance(account, widget.expenses),
+    return Money.sum(
+      _accounts.map(
+        (account) => widget.wallet.balance(account, widget.expenses),
+      ),
     );
   }
 
@@ -155,12 +156,6 @@ class _WalletPanelState extends State<WalletPanel> {
       return;
     }
 
-    // Preserve the existing opening balance if the dialog's balance
-    // was not changed. This is especially useful for accounts whose
-    // opening balance was not previously stored explicitly.
-    final previousOpeningBalance =
-        widget.wallet.openingBalances[account] ?? 0.0;
-
     final updatedOpeningBalances = Map<String, double>.from(
       widget.wallet.openingBalances,
     );
@@ -214,10 +209,6 @@ class _WalletPanelState extends State<WalletPanel> {
                 : 'Account renamed successfully.')
           : 'Could not save the account changes. Please try again.',
     );
-
-    // Keep the local variable intentionally referenced for clarity:
-    // accounts without an explicit opening balance default to zero.
-    assert(previousOpeningBalance.isFinite);
   }
 
   Future<void> _deleteAccount(String account) async {
@@ -437,7 +428,7 @@ class _WalletPanelState extends State<WalletPanel> {
                   ),
                   Text(
                     '${accounts.length} '
-                    '${accounts.length == 1 ? 'account' : 'accounts'} connected',
+                    '${accounts.length == 1 ? 'account' : 'accounts'} tracked',
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: theme.colorScheme.onSurfaceVariant,
                     ),
@@ -784,7 +775,7 @@ class _WalletPanelState extends State<WalletPanel> {
                     ),
                     subtitle: Text(_dateLabel(transfers[i].date)),
                     trailing: SizedBox(
-                      width: 108,
+                      width: 132,
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.end,
                         children: [
@@ -805,8 +796,8 @@ class _WalletPanelState extends State<WalletPanel> {
                             visualDensity: VisualDensity.compact,
                             padding: EdgeInsets.zero,
                             constraints: const BoxConstraints(
-                              minWidth: 32,
-                              minHeight: 32,
+                              minWidth: 48,
+                              minHeight: 48,
                             ),
                             tooltip: 'Delete transfer',
                             onPressed: _saving
@@ -1125,13 +1116,15 @@ class _AccountDialogState extends State<_AccountDialog> {
                 border: OutlineInputBorder(),
               ),
               validator: (value) {
-                final amount = double.tryParse(value?.trim() ?? '');
+                final amount = Money.parse(value ?? '', allowZero: true) == null
+                    ? null
+                    : Money.parse(value ?? '', allowZero: true)! / 100;
 
                 if (amount == null ||
                     !amount.isFinite ||
                     amount < 0 ||
                     amount > 1000000000) {
-                  return 'Enter an amount from 0 to 1 billion.';
+                  return 'Use up to 2 decimals, from 0 to 1 billion.';
                 }
 
                 return null;
@@ -1288,6 +1281,7 @@ class _TransferDialogState extends State<_TransferDialog> {
             ),
             const SizedBox(height: 12),
             DropdownButtonFormField<String>(
+              key: ValueKey(_to),
               initialValue: _to,
               isExpanded: true,
               decoration: const InputDecoration(
@@ -1327,16 +1321,19 @@ class _TransferDialogState extends State<_TransferDialog> {
                 border: OutlineInputBorder(),
               ),
               validator: (value) {
-                final amount = double.tryParse(value?.trim() ?? '');
+                final amount = Money.parse(value ?? '', allowZero: true) == null
+                    ? null
+                    : Money.parse(value ?? '', allowZero: true)! / 100;
 
                 if (amount == null ||
                     !amount.isFinite ||
                     amount <= 0 ||
                     amount > 1000000000) {
-                  return 'Enter a valid positive amount.';
+                  return 'Use a positive amount with up to 2 decimals.';
                 }
 
-                if (amount > _availableBalance) {
+                if (Money.centavos(amount) >
+                    Money.centavos(_availableBalance)) {
                   return 'Insufficient funds in this account.';
                 }
 

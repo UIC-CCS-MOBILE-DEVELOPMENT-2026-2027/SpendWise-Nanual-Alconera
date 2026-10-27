@@ -1,4 +1,8 @@
-import 'dart:convert';
+import 'dart:async';
+import 'domain/money.dart';
+import 'domain/reward_engine.dart';
+import 'backup_dialog.dart';
+import 'expense_history.dart';
 
 import 'package:flutter/material.dart';
 
@@ -481,7 +485,8 @@ const List<ThemeOption> shopThemes = [
 ];
 
 class SpendWiseApp extends StatefulWidget {
-  const SpendWiseApp({super.key});
+  final ExpenseStorage? storage;
+  const SpendWiseApp({super.key, this.storage});
 
   @override
   State<SpendWiseApp> createState() => _SpendWiseAppState();
@@ -497,10 +502,12 @@ class _SpendWiseAppState extends State<SpendWiseApp> {
   }
 
   Future<void> _loadSavedTheme() async {
-    final data = await ExpenseStorage().loadShopData();
-    final id = data['selectedTheme'] as String? ?? 'default';
-    if (mounted && id != _activeThemeId) {
-      setState(() => _activeThemeId = id);
+    try {
+      final data = await (widget.storage ?? ExpenseStorage()).loadShopData();
+      final id = data['selectedTheme'] as String? ?? 'default';
+      if (mounted && id != _activeThemeId) setState(() => _activeThemeId = id);
+    } catch (_) {
+      /* MainPage displays the data recovery screen. */
     }
   }
 
@@ -545,6 +552,7 @@ class _SpendWiseAppState extends State<SpendWiseApp> {
         ),
       ),
       home: MainPage(
+        storage: widget.storage,
         currentTheme: _currentTheme,
         onThemeChanged: _onThemeChanged,
       ),
@@ -553,11 +561,13 @@ class _SpendWiseAppState extends State<SpendWiseApp> {
 }
 
 class MainPage extends StatefulWidget {
+  final ExpenseStorage? storage;
   final ThemeOption currentTheme;
   final ValueChanged<String> onThemeChanged;
 
   const MainPage({
     super.key,
+    this.storage,
     required this.currentTheme,
     required this.onThemeChanged,
   });
@@ -566,8 +576,8 @@ class MainPage extends StatefulWidget {
   State<MainPage> createState() => _MainPageState();
 }
 
-class _MainPageState extends State<MainPage> {
-  final ExpenseStorage _storage = ExpenseStorage();
+class _MainPageState extends State<MainPage> with WidgetsBindingObserver {
+  late final ExpenseStorage _storage = widget.storage ?? ExpenseStorage();
 
   DateTime _calendarMonth = DateTime(
     DateTime.now().year,
@@ -582,7 +592,7 @@ class _MainPageState extends State<MainPage> {
   bool _walletAvailable = false;
   Map<String, double> _budgets = {};
 
-  double _monthlyBudget = 10000;
+  double _monthlyBudget = 0;
 
   int _questXp = 0;
   int _questCoins = 0;
@@ -593,7 +603,11 @@ class _MainPageState extends State<MainPage> {
   // Daily and weekly challenge persistence.
   Map<String, dynamic> _challengeProgress = {};
   bool _challengeStateLoaded = false;
-  bool _updatingChallenges = false;
+  bool _updatingRewards = false;
+  bool _saving = false;
+  String? _loadError;
+  Timer? _dayTimer;
+  DateTime _lastDay = calendarDate(DateTime.now());
 
   int _currentStreak = 0;
   int _bestStreak = 0;
@@ -612,647 +626,296 @@ class _MainPageState extends State<MainPage> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _dayTimer = Timer.periodic(
+      const Duration(minutes: 1),
+      (_) => _refreshDay(),
+    );
     _initialize();
   }
 
-  Future<void> _initialize() async {
-    await Future.wait([
-      _loadExpenses(),
-      _loadWallet(),
-      _loadBudgets(),
-      _loadMonthlyBudget(),
-      _loadQuestProgress(),
-      _loadStreak(),
-      _loadShop(),
-      _loadBadges(),
-      _loadChallengeProgress(),
-    ]);
-
-    if (!mounted) return;
-
-    _recalculateStreak();
-    setState(() => _loading = false);
-    await _updateQuestProgress(showCelebration: false);
-    await _updateChallenges();
+  @override
+  void dispose() {
+    _dayTimer?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
   }
 
-  Future<void> _loadStreak() async {
-    try {
-      final data = await _storage.loadStreakData();
-      if (!mounted) return;
-      setState(() {
-        _currentStreak = (data['currentStreak'] as num?)?.toInt() ?? 0;
-        _bestStreak = (data['bestStreak'] as num?)?.toInt() ?? 0;
-      });
-    } catch (_) {}
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _refreshDay();
   }
 
-  void _recalculateStreak() {
-    if (_expenses.isEmpty) {
-      _currentStreak = 0;
-      return;
-    }
-
-    final Set<String> activeDates = {};
-    for (final e in _expenses) {
-      final d = e.date;
-      activeDates.add(
-        '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}',
-      );
-    }
-
-    final now = DateTime.now();
-    final todayStr =
-        '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
-    final yesterday = now.subtract(const Duration(days: 1));
-    final yesterdayStr =
-        '${yesterday.year}-${yesterday.month.toString().padLeft(2, '0')}-${yesterday.day.toString().padLeft(2, '0')}';
-
-    var current = 0;
-    DateTime? checkDate;
-    if (activeDates.contains(todayStr)) {
-      checkDate = now;
-    } else if (activeDates.contains(yesterdayStr)) {
-      checkDate = yesterday;
-    }
-
-    if (checkDate != null) {
-      DateTime cursor = checkDate;
-      while (true) {
-        final key =
-            '${cursor.year}-${cursor.month.toString().padLeft(2, '0')}-${cursor.day.toString().padLeft(2, '0')}';
-        if (activeDates.contains(key)) {
-          current++;
-          cursor = cursor.subtract(const Duration(days: 1));
-        } else {
-          break;
-        }
-      }
-    }
-
-    _currentStreak = current;
-    if (_currentStreak > _bestStreak) {
-      _bestStreak = _currentStreak;
-    }
-
-    _storage.saveStreakData({
-      'currentStreak': _currentStreak,
-      'bestStreak': _bestStreak,
+  Future<void> _refreshDay() async {
+    if (_loading || _saving || _loadError != null || !mounted) return;
+    final today = calendarDate(DateTime.now());
+    if (today == _lastDay) return;
+    await _exclusive(() async {
+      setState(() => _lastDay = today);
+      await _updateQuestProgress(showCelebration: false);
     });
   }
 
-  Future<void> _loadShop() async {
+  Future<T?> _exclusive<T>(Future<T> Function() operation) async {
+    if (_saving || _loading || _loadError != null || !mounted) return null;
+    setState(() => _saving = true);
     try {
-      final data = await _storage.loadShopData();
-      final list = data['unlockedThemes'];
-      if (!mounted) return;
+      return await operation();
+    } catch (error, stack) {
+      debugPrint('Operation failed: $error');
+      debugPrintStack(stackTrace: stack);
+      if (mounted) _message('Could not save changes. Please try again.');
+      return null;
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _initialize() async {
+    if (mounted) {
       setState(() {
-        _unlockedThemes = list is List
-            ? list.whereType<String>().toSet()
-            : {'default'};
-        if (!_unlockedThemes.contains('default')) {
-          _unlockedThemes.add('default');
-        }
+        _loading = true;
+        _loadError = null;
       });
-    } catch (_) {}
+    }
+    try {
+      final data = await _storage.loadSnapshot();
+      if (!mounted) return;
+      final quest = data['quest'] as Map;
+      final shop = data['shop'] as Map;
+      setState(() {
+        _expenses =
+            (data['expenses'] as List)
+                .map(
+                  (e) => Expense.fromJson(Map<String, dynamic>.from(e as Map)),
+                )
+                .toList()
+              ..sort((a, b) => b.date.compareTo(a.date));
+        _wallet = Wallet.fromJson(
+          Map<String, dynamic>.from(data['wallet'] as Map),
+        );
+        _walletAvailable = true;
+        _budgets = Map<String, dynamic>.from(
+          data['budgets'] as Map,
+        ).map((k, v) => MapEntry(k, (v as num).toDouble()));
+        _monthlyBudget = (data['monthlyBudgetCentavos'] as int) / 100;
+        _questXp = quest['xp'] as int;
+        _questCoins = quest['coins'] as int;
+        _completedQuests
+          ..clear()
+          ..addAll(List<String>.from(quest['completedQuests'] as List));
+        _earnedBadges
+          ..clear()
+          ..addAll(List<String>.from(data['badges'] as List));
+        _challengeProgress = Map<String, dynamic>.from(
+          data['challenges'] as Map,
+        );
+        _currentStreak = (data['streak'] as Map)['currentStreak'] as int;
+        _bestStreak = (data['streak'] as Map)['bestStreak'] as int;
+        _unlockedThemes = List<String>.from(
+          shop['unlockedThemes'] as List,
+        ).toSet()..add('default');
+        _questStateLoaded = true;
+        _badgeStateLoaded = true;
+        _challengeStateLoaded = true;
+      });
+      widget.onThemeChanged(shop['selectedTheme'] as String);
+      await _updateQuestProgress(showCelebration: false);
+    } catch (error) {
+      if (mounted) {
+        setState(
+          () => _loadError =
+              'Saved data could not be loaded. Your records have been preserved.',
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _openBackup() async {
+    if (_saving || _loading) return;
+    final restored = await showDialog<bool>(
+      context: context,
+      builder: (_) =>
+          BackupDialog(storage: _storage, recovery: _loadError != null),
+    );
+    if (restored == true && mounted) await _initialize();
   }
 
   Future<void> _buyOrEquipTheme(ThemeOption theme) async {
-    final isUnlocked = _unlockedThemes.contains(theme.id);
-    final isActive = widget.currentTheme.id == theme.id;
-
-    if (isActive) return;
-
-    if (isUnlocked) {
-      widget.onThemeChanged(theme.id);
-      await _storage.saveShopData({
-        'selectedTheme': theme.id,
-        'unlockedThemes': _unlockedThemes.toList(),
-      });
-      _message('Equipped ${theme.name} theme!');
-      return;
-    }
-
-    // Purchase check
-    if (_questCoins < theme.cost) {
-      _message(
-        'Need ${theme.cost - _questCoins} more coins! Complete quests to earn coins.',
-      );
-      return;
-    }
-
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: surface,
-        title: Text('Unlock ${theme.name}?'),
-        content: Text(
-          'Spend ${theme.cost} coins to unlock the ${theme.name} theme?',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: theme.color),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: Text('Unlock for ${theme.cost} 🪙'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirm != true || !mounted) return;
-
-    setState(() {
-      _questCoins -= theme.cost;
-      _unlockedThemes.add(theme.id);
-    });
-
-    widget.onThemeChanged(theme.id);
-
-    await _storage.saveQuestProgress({
-      'xp': _questXp,
-      'coins': _questCoins,
-      'completedQuests': _completedQuests.toList(),
-    });
-
-    await _storage.saveShopData({
-      'selectedTheme': theme.id,
-      'unlockedThemes': _unlockedThemes.toList(),
-    });
-
-    _message('Unlocked and equipped ${theme.name} theme! 🎉');
-  }
-
-  Future<void> _loadWallet() async {
-    try {
-      final wallet = await _storage.loadWallet();
-      if (!mounted) return;
-      setState(() {
-        _wallet = wallet;
-        _walletAvailable = true;
-      });
-    } catch (_) {
-      if (mounted) {
-        _message('Could not load accounts. Restart the app to retry.');
+    await _exclusive(() async {
+      if (widget.currentTheme.id == theme.id) return;
+      final unlocked = _unlockedThemes.contains(theme.id);
+      if (!unlocked && _questCoins < theme.cost) {
+        _message(
+          'Need ${theme.cost - _questCoins} more coins. Complete quests to earn coins.',
+        );
+        return;
       }
-    }
+      if (!unlocked) {
+        final confirmed = await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: Text('Unlock ${theme.name}?'),
+            content: Text('Spend ${theme.cost} coins on this theme?'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('Unlock'),
+              ),
+            ],
+          ),
+        );
+        if (confirmed != true || !mounted) return;
+      }
+      final coins = _questCoins - (unlocked ? 0 : theme.cost);
+      final themes = {..._unlockedThemes, theme.id};
+      final saved = await _storage.savePurchase(
+        quest: {
+          'xp': _questXp,
+          'coins': coins,
+          'completedQuests': _completedQuests.toList(),
+        },
+        shop: {'selectedTheme': theme.id, 'unlockedThemes': themes.toList()},
+      );
+      if (!mounted) return;
+      if (!saved) {
+        _message('Theme could not be saved. Your coins are unchanged.');
+        return;
+      }
+      setState(() {
+        _questCoins = coins;
+        _unlockedThemes = themes;
+      });
+      widget.onThemeChanged(theme.id);
+      _message('Equipped ${theme.name} theme!');
+    });
   }
 
   Future<bool> _saveWallet(Wallet wallet) async {
-    try {
-      if (!await _storage.saveWallet(wallet)) {
-        throw StateError('Save failed');
-      }
-
-      if (mounted) {
-        setState(() => _wallet = wallet);
-      }
-
-      return true;
-    } catch (error, stackTrace) {
-      debugPrint('Failed to save accounts: $error');
-      debugPrintStack(stackTrace: stackTrace);
-
-      if (mounted) {
-        _message('Could not save accounts. Please try again.');
-      }
-
-      return false;
-    }
+    return await _exclusive(() async {
+          final saved = await _storage.saveWallet(wallet);
+          if (saved && mounted) setState(() => _wallet = wallet);
+          return saved;
+        }) ??
+        false;
   }
 
   Future<bool> _updateAccountData({
     required Wallet wallet,
     required List<Expense> expenses,
   }) async {
-    final previousWallet = _wallet;
-    final previousExpenses = List<Expense>.from(_expenses);
-
-    try {
-      // Save expenses first so account names remain consistent.
-      if (!await _storage.saveExpenses(expenses)) {
-        return false;
-      }
-
-      if (!await _storage.saveWallet(wallet)) {
-        // Restore the previous expenses if saving the wallet fails.
-        await _storage.saveExpenses(previousExpenses);
-        return false;
-      }
-
-      if (!mounted) return true;
-
-      setState(() {
-        _wallet = wallet;
-        _expenses = expenses;
-      });
-
-      return true;
-    } catch (error, stackTrace) {
-      debugPrint('Failed to update account data: $error');
-      debugPrintStack(stackTrace: stackTrace);
-
-      // Best-effort rollback of both persisted records.
-      try {
-        await _storage.saveExpenses(previousExpenses);
-        await _storage.saveWallet(previousWallet);
-      } catch (_) {
-        // Keep the original failure as the reported error.
-      }
-
-      return false;
-    }
-  }
-
-  Future<void> _loadExpenses() async {
-    try {
-      final loaded = await _storage.loadExpenses();
-      loaded.sort((a, b) => b.date.compareTo(a.date));
-
-      if (!mounted) return;
-      setState(() => _expenses = loaded);
-    } catch (error, stackTrace) {
-      debugPrint('Failed to load expenses: $error');
-      debugPrintStack(stackTrace: stackTrace);
-      if (mounted) _message('Could not load saved expenses.');
-    }
-  }
-
-  Future<void> _loadBudgets() async {
-    try {
-      final loaded = await _storage.loadBudgets();
-      if (mounted) setState(() => _budgets = loaded);
-    } catch (error) {
-      debugPrint('Failed to load category budgets: $error');
-      if (mounted) _message('Could not load saved budgets.');
-    }
-  }
-
-  Future<void> _loadMonthlyBudget() async {
-    try {
-      final amount = await _storage.loadMonthlyBudget();
-      if (mounted) setState(() => _monthlyBudget = amount);
-    } catch (error) {
-      debugPrint('Failed to load monthly budget: $error');
-      if (mounted) _message('Could not load the monthly budget.');
-    }
-  }
-
-  Future<void> _loadQuestProgress() async {
-    try {
-      final saved = await _storage.loadQuestProgress();
-      final quests = saved['completedQuests'];
-
-      if (!mounted) return;
-
-      setState(() {
-        _questXp = (saved['xp'] as num?)?.toInt() ?? 0;
-        _questCoins = (saved['coins'] as num?)?.toInt() ?? 0;
-        _completedQuests
-          ..clear()
-          ..addAll(quests is List ? quests.whereType<String>() : <String>[]);
-        _questStateLoaded = true;
-      });
-    } catch (error) {
-      debugPrint('Failed to load quest progress: $error');
-      if (mounted) setState(() => _questStateLoaded = true);
-    }
-  }
-
-  Future<void> _loadBadges() async {
-    try {
-      final badges = await _storage.loadEarnedBadges();
-
-      if (!mounted) return;
-
-      setState(() {
-        _earnedBadges
-          ..clear()
-          ..addAll(badges);
-        _badgeStateLoaded = true;
-      });
-    } catch (error) {
-      debugPrint('Failed to load badges: $error');
-
-      if (mounted) {
-        setState(() => _badgeStateLoaded = true);
-      }
-    }
-  }
-
-  Future<void> _loadChallengeProgress() async {
-    try {
-      final saved = await _storage.loadChallengeProgress();
-
-      if (!mounted) return;
-
-      setState(() {
-        _challengeProgress = saved;
-        _challengeStateLoaded = true;
-      });
-    } catch (error) {
-      debugPrint('Failed to load challenge progress: $error');
-
-      if (mounted) {
-        setState(() => _challengeStateLoaded = true);
-      }
-    }
-  }
-
-  Future<void> _updateChallenges() async {
-    if (!_challengeStateLoaded || !_questStateLoaded || _updatingChallenges) {
-      return;
-    }
-
-    _updatingChallenges = true;
-
-    try {
-      final now = DateTime.now();
-      final todayKey = _challengeDateKey(now);
-      final weekKey = _challengeWeekKey(now);
-
-      final todayExpenses = _expenses
-          .where((expense) => _challengeDateKey(expense.date) == todayKey)
-          .toList();
-
-      final weekExpenses = _expenses.where((expense) {
-        final expenseDate = DateTime(
-          expense.date.year,
-          expense.date.month,
-          expense.date.day,
-        );
-        final monday = DateTime(
-          now.year,
-          now.month,
-          now.day,
-        ).subtract(Duration(days: now.weekday - 1));
-
-        return !expenseDate.isBefore(monday) &&
-            expenseDate.isBefore(monday.add(const Duration(days: 7)));
-      }).toList();
-
-      final dailyCategories = todayExpenses
-          .map((expense) => expense.category)
-          .toSet();
-
-      final weeklyCategories = weekExpenses
-          .map((expense) => expense.category)
-          .toSet();
-
-      final activeDays = weekExpenses
-          .map((expense) => _challengeDateKey(expense.date))
-          .toSet();
-
-      final progressById = <String, int>{
-        'daily_tracker': todayExpenses.isNotEmpty ? 1 : 0,
-        'daily_variety': dailyCategories.length,
-        'weekly_consistency': activeDays.length,
-        'weekly_explorer': weeklyCategories.length,
-      };
-
-      final updated = Map<String, dynamic>.from(_challengeProgress);
-      final completed = <String>[];
-      var earnedXp = 0;
-      var earnedCoins = 0;
-
-      for (final challenge in allChallenges) {
-        final periodKey = challenge.period == ChallengePeriod.daily
-            ? todayKey
-            : weekKey;
-
-        final recordKey = '${challenge.id}_$periodKey';
-        final progress = progressById[challenge.id] ?? 0;
-        final isComplete = progress >= challenge.goal;
-
-        if (isComplete && updated[recordKey] != true) {
-          updated[recordKey] = true;
-          completed.add(challenge.title);
-          earnedXp += challenge.xp;
-          earnedCoins += challenge.coins;
-        }
-      }
-
-      final progressChanged =
-          jsonEncode(updated) != jsonEncode(_challengeProgress);
-
-      if (earnedXp > 0 || earnedCoins > 0) {
-        _questXp += earnedXp;
-        _questCoins += earnedCoins;
-
-        final questSaved = await _storage.saveQuestProgress({
-          'xp': _questXp,
-          'coins': _questCoins,
-          'completedQuests': _completedQuests.toList(),
-        });
-
-        if (!questSaved) {
-          _questXp -= earnedXp;
-          _questCoins -= earnedCoins;
-
-          if (mounted) {
-            _message('Challenge rewards could not be saved.');
+    return await _exclusive(() async {
+          final saved = await _storage.saveFinancialData(
+            wallet: wallet,
+            expenses: expenses,
+          );
+          if (saved && mounted) {
+            setState(() {
+              _wallet = wallet;
+              _expenses = expenses;
+            });
           }
-          return;
-        }
-      }
-
-      if (progressChanged) {
-        final challengeSaved = await _storage.saveChallengeProgress(updated);
-
-        if (!challengeSaved) {
-          if (mounted) {
-            _message('Challenge completion could not be saved.');
-          }
-          return;
-        }
-
-        _challengeProgress = updated;
-      }
-
-      if (mounted) {
-        setState(() {});
-      }
-
-      if (completed.isNotEmpty && mounted) {
-        _message(
-          'Challenge completed: ${completed.join(', ')}! '
-          '+$earnedXp XP and +$earnedCoins coins.',
-        );
-      }
-    } catch (error) {
-      debugPrint('Failed to update challenges: $error');
-
-      if (mounted) {
-        _message('Could not update challenge progress.');
-      }
-    } finally {
-      _updatingChallenges = false;
-    }
+          return saved;
+        }) ??
+        false;
   }
+
+  Future<void> _updateChallenges() =>
+      _updateQuestProgress(showCelebration: false);
 
   Future<void> _updateQuestProgress({bool showCelebration = true}) async {
-    if (!_questStateLoaded || !_badgeStateLoaded) return;
-
-    _recalculateStreak();
-
-    final newlyCompleted = <QuestDef>[];
-    final prevLevel = levelFromXp(_questXp);
-
-    void completeQuest(String id) {
-      if (!_completedQuests.contains(id)) {
-        final def = allQuests.firstWhere(
-          (q) => q.id == id,
-          orElse: () => allQuests.first,
-        );
-
-        if (_completedQuests.add(id)) {
-          _questXp += def.xp;
-          _questCoins += def.coins;
-          newlyCompleted.add(def);
-        }
-      }
-    }
-
-    final totalCount = _expenses.length;
-    final categoriesUsed = _expenses.map((e) => e.category).toSet();
-    final now = DateTime.now();
-
-    final monthExpenses = _expenses
-        .where((e) => isSameMonth(e.date, now))
-        .toList();
-
-    final monthSpending = monthExpenses.fold<double>(
-      0,
-      (sum, expense) => sum + expense.amount,
-    );
-
-    // 1. Basics
-    if (totalCount >= 1) completeQuest('first_expense');
-    if (totalCount >= 5) completeQuest('track_five_expenses');
-    if (totalCount >= 10) completeQuest('track_ten_expenses');
-    if (totalCount >= 25) completeQuest('track_twenty_five');
-    if (categoriesUsed.length >= 3) completeQuest('three_categories');
-
-    if (categoriesUsed.length >= categories.length) {
-      completeQuest('all_categories');
-    }
-
-    // 2. Budget
-    if (_monthlyBudget > 0 && _monthlyBudget != 10000.0) {
-      completeQuest('set_monthly_budget');
-    }
-
-    if (_budgets.isNotEmpty) {
-      completeQuest('set_category_budget');
-    }
-
-    if (monthExpenses.length >= 5 &&
-        _monthlyBudget > 0 &&
-        monthSpending <= _monthlyBudget) {
-      completeQuest('under_budget_month');
-    }
-
-    if (monthExpenses.length >= 3 &&
-        _monthlyBudget > 0 &&
-        monthSpending <= (_monthlyBudget * 0.5)) {
-      completeQuest('big_saver');
-    }
-
-    // 3. Streaks
-    if (_currentStreak >= 3) completeQuest('streak_3');
-    if (_currentStreak >= 7) completeQuest('streak_7');
-    if (_currentStreak >= 14) completeQuest('streak_14');
-    if (_currentStreak >= 30) completeQuest('streak_30');
-
-    // 4. Badges
-    final newlyEarnedBadges = <BadgeDef>[];
-
-    void unlockBadge(String id) {
-      if (_earnedBadges.add(id)) {
-        final badge = allBadges.firstWhere((item) => item.id == id);
-        newlyEarnedBadges.add(badge);
-      }
-    }
-
-    if (totalCount >= 1) unlockBadge('first_steps');
-
-    if (categoriesUsed.length >= categories.length) {
-      unlockBadge('category_explorer');
-    }
-
-    if (_completedQuests.contains('under_budget_month')) {
-      unlockBadge('budget_guardian');
-    }
-
-    if (_currentStreak >= 7) {
-      unlockBadge('streak_champion');
-    }
-
-    if (totalCount >= 25) {
-      unlockBadge('dedicated_tracker');
-    }
-
-    if (_completedQuests.contains('big_saver')) {
-      unlockBadge('big_saver');
-    }
-
-    // Persist badges independently of quest rewards.
-    if (newlyEarnedBadges.isNotEmpty) {
-      try {
-        final saved = await _storage.saveEarnedBadges(_earnedBadges);
-
-        if (!saved && mounted) {
-          _message('Earned badges could not be saved.');
-        }
-      } catch (error) {
-        debugPrint('Failed to save earned badges: $error');
-
-        if (mounted) {
-          _message('Earned badges could not be saved.');
-        }
-      }
-    }
-
-    if (newlyCompleted.isEmpty) {
-      if (newlyEarnedBadges.isNotEmpty && mounted) {
-        setState(() {});
-      }
+    if (!_questStateLoaded ||
+        !_badgeStateLoaded ||
+        !_challengeStateLoaded ||
+        _updatingRewards) {
       return;
     }
-
+    _updatingRewards = true;
     try {
-      final success = await _storage.saveQuestProgress({
-        'xp': _questXp,
-        'coins': _questCoins,
-        'completedQuests': _completedQuests.toList(),
-      });
-
+      final result = RewardEngine.evaluate(
+        expenses: _expenses,
+        now: DateTime.now(),
+        monthlyBudget: _monthlyBudget,
+        hasCategoryBudget: _budgets.isNotEmpty,
+        categoryCount: categories.length,
+        xp: _questXp,
+        coins: _questCoins,
+        bestStreak: _bestStreak,
+        completedQuests: _completedQuests,
+        earnedBadges: _earnedBadges,
+        challengeClaims: _challengeProgress,
+        questRewards: {
+          for (final q in allQuests) q.id: (xp: q.xp, coins: q.coins),
+        },
+        challengeRules: {
+          for (final c in allChallenges)
+            c.id: (
+              goal: c.goal,
+              daily: c.period == ChallengePeriod.daily,
+              xp: c.xp,
+              coins: c.coins,
+            ),
+        },
+      );
+      final changed =
+          result.newQuests.isNotEmpty ||
+          result.newChallenges.isNotEmpty ||
+          result.badges.length != _earnedBadges.length ||
+          result.currentStreak != _currentStreak ||
+          result.bestStreak != _bestStreak;
+      if (!changed) return;
+      final saved = await _storage.saveRewards(
+        quest: {
+          'xp': result.xp,
+          'coins': result.coins,
+          'completedQuests': result.quests.toList(),
+        },
+        challenges: result.challenges,
+        badges: result.badges,
+        streak: {
+          'currentStreak': result.currentStreak,
+          'bestStreak': result.bestStreak,
+        },
+      );
       if (!mounted) return;
-
-      if (!success) {
-        _message('Quest rewards could not be saved.');
-      } else {
-        setState(() {});
+      if (!saved) {
+        _message('Rewards could not be saved. Please try again.');
+        return;
       }
-
-      final newLevel = levelFromXp(_questXp);
-      final didLevelUp = newLevel > prevLevel;
-
-      if (showCelebration && mounted) {
+      final oldLevel = levelFromXp(_questXp);
+      setState(() {
+        _questXp = result.xp;
+        _questCoins = result.coins;
+        _completedQuests
+          ..clear()
+          ..addAll(result.quests);
+        _earnedBadges
+          ..clear()
+          ..addAll(result.badges);
+        _challengeProgress = result.challenges;
+        _currentStreak = result.currentStreak;
+        _bestStreak = result.bestStreak;
+      });
+      if (showCelebration && result.newQuests.isNotEmpty) {
         await _showQuestCelebrationDialog(
-          newlyCompleted,
-          didLevelUp ? newLevel : null,
+          allQuests.where((q) => result.newQuests.contains(q.id)).toList(),
+          levelFromXp(result.xp) > oldLevel ? levelFromXp(result.xp) : null,
+        );
+      } else if (result.newChallenges.isNotEmpty) {
+        _message(
+          'Challenge rewards earned! View your progress in Money Quest.',
         );
       }
     } catch (error) {
-      debugPrint('Failed to save quest progress: $error');
-
-      if (mounted) {
-        _message('Quest rewards could not be saved.');
-      }
+      if (mounted) _message('Rewards could not be saved. Please try again.');
+    } finally {
+      _updatingRewards = false;
     }
   }
 
@@ -1426,8 +1089,18 @@ class _MainPageState extends State<MainPage> {
 
   double? _questProgress(QuestDef q) {
     if (_completedQuests.contains(q.id)) return 1.0;
-    final count = _expenses.length;
-    final categoriesCount = _expenses.map((e) => e.category).toSet().length;
+    final count = _expenses
+        .where(
+          (e) => !calendarDate(e.date).isAfter(calendarDate(DateTime.now())),
+        )
+        .length;
+    final categoriesCount = _expenses
+        .where(
+          (e) => !calendarDate(e.date).isAfter(calendarDate(DateTime.now())),
+        )
+        .map((e) => e.category)
+        .toSet()
+        .length;
     final now = DateTime.now();
     final monthExp = _expenses.where((e) => isSameMonth(e.date, now)).length;
 
@@ -1445,7 +1118,7 @@ class _MainPageState extends State<MainPage> {
       case 'all_categories':
         return categoriesCount.clamp(0, categories.length) / categories.length;
       case 'set_monthly_budget':
-        return _monthlyBudget != 10000.0 ? 1.0 : 0.0;
+        return _monthlyBudget > 0 ? 1.0 : 0.0;
       case 'set_category_budget':
         return _budgets.isNotEmpty ? 1.0 : 0.0;
       case 'under_budget_month':
@@ -1467,8 +1140,18 @@ class _MainPageState extends State<MainPage> {
 
   String? _questProgressText(QuestDef q) {
     if (_completedQuests.contains(q.id)) return 'Completed';
-    final count = _expenses.length;
-    final categoriesCount = _expenses.map((e) => e.category).toSet().length;
+    final count = _expenses
+        .where(
+          (e) => !calendarDate(e.date).isAfter(calendarDate(DateTime.now())),
+        )
+        .length;
+    final categoriesCount = _expenses
+        .where(
+          (e) => !calendarDate(e.date).isAfter(calendarDate(DateTime.now())),
+        )
+        .map((e) => e.category)
+        .toSet()
+        .length;
     final now = DateTime.now();
     final monthExp = _expenses.where((e) => isSameMonth(e.date, now)).length;
 
@@ -1486,9 +1169,7 @@ class _MainPageState extends State<MainPage> {
       case 'all_categories':
         return '${categoriesCount.clamp(0, categories.length)} / ${categories.length} categories';
       case 'set_monthly_budget':
-        return _monthlyBudget != 10000.0
-            ? 'Budget set'
-            : 'Tap Budget tab to set';
+        return _monthlyBudget > 0 ? 'Budget set' : 'Tap Budget tab to set';
       case 'set_category_budget':
         return _budgets.isNotEmpty ? '${_budgets.length} set' : '0 set';
       case 'under_budget_month':
@@ -1527,30 +1208,27 @@ class _MainPageState extends State<MainPage> {
   double get _monthlyExpenses {
     final now = DateTime.now();
 
-    return _expenses
-        .where((e) => isSameMonth(e.date, now))
-        .fold<double>(0, (sum, e) => sum + e.amount);
+    return Money.sum(
+      _expenses.where((e) => isSameMonth(e.date, now)).map((e) => e.amount),
+    );
   }
 
-  double get _allExpenses =>
-      _expenses.fold<double>(0, (sum, e) => sum + e.amount);
+  double get _allExpenses => Money.sum(_expenses.map((e) => e.amount));
 
   double _categoryMonthlySpending(String category) {
     final now = DateTime.now();
 
-    return _expenses
-        .where((e) => e.category == category && isSameMonth(e.date, now))
-        .fold<double>(0, (sum, e) => sum + e.amount);
+    return Money.sum(
+      _expenses
+          .where((e) => e.category == category && isSameMonth(e.date, now))
+          .map((e) => e.amount),
+    );
   }
 
-  double get _totalConfiguredBudget =>
-      _budgets.values.fold<double>(0, (sum, amount) => sum + amount);
+  double get _totalConfiguredBudget => Money.sum(_budgets.values);
 
   double get _totalCategoryBudgetSpending {
-    return _budgets.keys.fold<double>(
-      0,
-      (total, category) => total + _categoryMonthlySpending(category),
-    );
+    return Money.sum(_budgets.keys.map(_categoryMonthlySpending));
   }
 
   void _message(String message) {
@@ -1565,6 +1243,10 @@ class _MainPageState extends State<MainPage> {
   }
 
   Future<void> _editMonthlyBudget() async {
+    await _exclusive(() => _doEditMonthlyBudget());
+  }
+
+  Future<void> _doEditMonthlyBudget() async {
     final amount = await showDialog<double>(
       context: context,
       builder: (_) => _MonthlyBudgetDialog(initialAmount: _monthlyBudget),
@@ -1596,6 +1278,10 @@ class _MainPageState extends State<MainPage> {
   }
 
   Future<void> _editCategoryBudget(String category) async {
+    await _exclusive(() => _doEditCategoryBudget(category));
+  }
+
+  Future<void> _doEditCategoryBudget(String category) async {
     final amount = await showDialog<double>(
       context: context,
       builder: (_) => _CategoryBudgetDialog(
@@ -1631,6 +1317,10 @@ class _MainPageState extends State<MainPage> {
   }
 
   Future<void> _removeCategoryBudget(String category) async {
+    await _exclusive(() => _doRemoveCategoryBudget(category));
+  }
+
+  Future<void> _doRemoveCategoryBudget(String category) async {
     if (!_budgets.containsKey(category)) return;
 
     final confirm = await showDialog<bool>(
@@ -1742,6 +1432,20 @@ class _MainPageState extends State<MainPage> {
   }
 
   Future<void> _openExpenseForm({Expense? expense}) async {
+    await _exclusive(() => _doOpenExpenseForm(expense: expense));
+  }
+
+  Future<void> _doOpenExpenseForm({Expense? expense}) async {
+    final accounts = {
+      ..._wallet.openingBalances.keys,
+      ..._expenses.map((e) => e.account),
+      for (final t in _wallet.transfers) ...[t.from, t.to],
+    };
+    if (accounts.isEmpty) {
+      _message('Create an account in My Accounts before adding an expense.');
+      setState(() => _selectedTab = 0);
+      return;
+    }
     Expense? draft = expense;
 
     while (mounted) {
@@ -1876,6 +1580,10 @@ class _MainPageState extends State<MainPage> {
   }
 
   Future<void> _deleteExpense(Expense expense) async {
+    await _exclusive(() => _doDeleteExpense(expense));
+  }
+
+  Future<void> _doDeleteExpense(Expense expense) async {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
@@ -1931,21 +1639,40 @@ class _MainPageState extends State<MainPage> {
     return Scaffold(
       appBar: _selectedTab == 0
           ? null
-          : AppBar(title: Text(titles[_selectedTab]), backgroundColor: navy),
-      body: _loading
-          ? Center(child: CircularProgressIndicator(color: _primaryColor))
-          : IndexedStack(
-              index: _selectedTab,
-              children: [
-                _buildDashboard(),
-                _buildExpenseHistory(),
-                _buildInsights(),
-                _buildQuest(),
-                _buildBudgets(),
-                _buildCalendar(),
+          : AppBar(
+              title: Text(titles[_selectedTab]),
+              backgroundColor: navy,
+              actions: [
+                IconButton(
+                  tooltip: 'Backup and restore',
+                  onPressed: _openBackup,
+                  icon: const Icon(Icons.backup_outlined),
+                ),
               ],
             ),
-      floatingActionButton: _selectedTab == 0 || _selectedTab == 1
+      body: _loading
+          ? Center(child: CircularProgressIndicator(color: _primaryColor))
+          : _loadError != null
+          ? _buildLoadError()
+          : AbsorbPointer(
+              absorbing: _saving,
+              child: IndexedStack(
+                index: _selectedTab,
+                children: [
+                  _buildDashboard(),
+                  _buildExpenseHistory(),
+                  _buildInsights(),
+                  _buildQuest(),
+                  _buildBudgets(),
+                  _buildCalendar(),
+                ],
+              ),
+            ),
+      floatingActionButton:
+          !_loading &&
+              !_saving &&
+              _loadError == null &&
+              (_selectedTab == 0 || _selectedTab == 1)
           ? FloatingActionButton.extended(
               onPressed: () => _openExpenseForm(),
               backgroundColor: _primaryColor,
@@ -1959,6 +1686,7 @@ class _MainPageState extends State<MainPage> {
         indicatorColor: _primaryColor.withValues(alpha: 0.25),
         selectedIndex: _selectedTab,
         onDestinationSelected: (index) {
+          if (_saving || _loading || _loadError != null) return;
           setState(() => _selectedTab = index);
         },
         destinations: const [
@@ -1997,6 +1725,29 @@ class _MainPageState extends State<MainPage> {
     );
   }
 
+  Widget _buildLoadError() => Center(
+    child: SingleChildScrollView(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.storage_rounded, size: 48, color: gold),
+          const SizedBox(height: 16),
+          Text(_loadError!, textAlign: TextAlign.center),
+          const SizedBox(height: 16),
+          FilledButton(
+            onPressed: _initialize,
+            child: const Text('Retry loading'),
+          ),
+          TextButton(
+            onPressed: _openBackup,
+            child: const Text('Backup and recovery'),
+          ),
+        ],
+      ),
+    ),
+  );
+
   Widget _buildDashboard() {
     final now = DateTime.now();
     const monthNames = [
@@ -2023,11 +1774,15 @@ class _MainPageState extends State<MainPage> {
         ? 0.0
         : (_monthlyExpenses / _monthlyBudget).clamp(0.0, 1.0);
     final remainingIncome =
-        _wallet.openingBalances.values.fold<double>(
-          0,
-          (sum, amount) => sum + amount,
-        ) -
-        _allExpenses;
+        (_wallet.openingBalances.values.fold<int>(
+              0,
+              (total, value) => total + Money.centavos(value),
+            ) -
+            _expenses.fold<int>(
+              0,
+              (total, expense) => total + expense.amountCentavos,
+            )) /
+        100;
     final budgetRemaining = _monthlyBudget - _monthlyExpenses;
 
     return SafeArea(
@@ -2068,8 +1823,9 @@ class _MainPageState extends State<MainPage> {
                 ),
               ),
               IconButton(
-                onPressed: () => _message('Welcome to SpendWise!'),
-                icon: const Icon(Icons.notifications_none_rounded),
+                tooltip: 'Backup and restore',
+                onPressed: _openBackup,
+                icon: const Icon(Icons.backup_outlined),
                 style: IconButton.styleFrom(backgroundColor: surface),
               ),
             ],
@@ -2138,12 +1894,7 @@ class _MainPageState extends State<MainPage> {
                       child: _BalanceStat(
                         icon: Icons.south_west_rounded,
                         label: 'Opening funds',
-                        amount: peso(
-                          _wallet.openingBalances.values.fold<double>(
-                            0,
-                            (sum, amount) => sum + amount,
-                          ),
-                        ),
+                        amount: peso(Money.sum(_wallet.openingBalances.values)),
                         color: emerald,
                       ),
                     ),
@@ -2267,7 +2018,9 @@ class _MainPageState extends State<MainPage> {
                     Text(
                       '${(_monthlyBudget <= 0 ? 0 : _monthlyExpenses / _monthlyBudget * 100).toStringAsFixed(1)}%',
                       style: TextStyle(
-                        color: _monthlyExpenses > _monthlyBudget
+                        color:
+                            _monthlyBudget > 0 &&
+                                _monthlyExpenses > _monthlyBudget
                             ? Colors.redAccent
                             : emerald,
                         fontWeight: FontWeight.bold,
@@ -2283,7 +2036,7 @@ class _MainPageState extends State<MainPage> {
                     minHeight: 9,
                     backgroundColor: const Color(0xFF363A50),
                     valueColor: AlwaysStoppedAnimation(
-                      _monthlyExpenses > _monthlyBudget
+                      _monthlyBudget > 0 && _monthlyExpenses > _monthlyBudget
                           ? Colors.redAccent
                           : _primaryColor,
                     ),
@@ -2299,7 +2052,9 @@ class _MainPageState extends State<MainPage> {
                       ),
                     ),
                     Text(
-                      '${peso(_monthlyBudget)} limit',
+                      _monthlyBudget > 0
+                          ? '${peso(_monthlyBudget)} limit'
+                          : 'Set a monthly budget',
                       style: const TextStyle(color: muted, fontSize: 12),
                     ),
                   ],
@@ -2308,11 +2063,15 @@ class _MainPageState extends State<MainPage> {
                 Align(
                   alignment: Alignment.centerRight,
                   child: Text(
-                    budgetRemaining < 0
+                    _monthlyBudget <= 0
+                        ? 'No monthly budget set'
+                        : budgetRemaining < 0
                         ? '${peso(budgetRemaining.abs())} over budget'
                         : '${peso(budgetRemaining)} remaining',
                     style: TextStyle(
-                      color: budgetRemaining < 0 ? Colors.redAccent : emerald,
+                      color: _monthlyBudget > 0 && budgetRemaining < 0
+                          ? Colors.redAccent
+                          : emerald,
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
                     ),
@@ -2466,7 +2225,9 @@ class _MainPageState extends State<MainPage> {
                 ],
               ),
               Text(
-                '${peso(_monthlyExpenses)} of ${peso(_monthlyBudget)} spent',
+                _monthlyBudget > 0
+                    ? '${peso(_monthlyExpenses)} of ${peso(_monthlyBudget)} spent'
+                    : 'No monthly budget set',
                 style: const TextStyle(color: muted, fontSize: 12),
               ),
               const SizedBox(height: 12),
@@ -2476,18 +2237,22 @@ class _MainPageState extends State<MainPage> {
                 borderRadius: BorderRadius.circular(8),
                 backgroundColor: const Color(0xFF363A50),
                 valueColor: AlwaysStoppedAnimation(
-                  _monthlyExpenses > _monthlyBudget
+                  _monthlyBudget > 0 && _monthlyExpenses > _monthlyBudget
                       ? Colors.redAccent
                       : _primaryColor,
                 ),
               ),
               const SizedBox(height: 10),
               Text(
-                overallRemaining < 0
+                _monthlyBudget <= 0
+                    ? 'Set a monthly limit to track your budget'
+                    : overallRemaining < 0
                     ? '${peso(overallRemaining.abs())} over budget'
                     : '${peso(overallRemaining)} remaining',
                 style: TextStyle(
-                  color: overallRemaining < 0 ? Colors.redAccent : emerald,
+                  color: _monthlyBudget > 0 && overallRemaining < 0
+                      ? Colors.redAccent
+                      : emerald,
                   fontWeight: FontWeight.w600,
                 ),
               ),
@@ -2747,70 +2512,12 @@ class _MainPageState extends State<MainPage> {
     );
   }
 
-  Widget _buildExpenseHistory() {
-    if (_expenses.isEmpty) {
-      return const _EmptyState(
-        icon: Icons.receipt_long_rounded,
-        title: 'Your expense history is empty',
-        message: 'Tap Add expense to record your first expense.',
-      );
-    }
-
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(20, 16, 20, 110),
-      children: [
-        Container(
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [
-                _primaryColor,
-                Color.lerp(_primaryColor, Colors.black, 0.55)!,
-              ],
-            ),
-            borderRadius: BorderRadius.circular(22),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'Total recorded expenses',
-                style: TextStyle(color: Colors.white70),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                peso(_allExpenses),
-                style: const TextStyle(
-                  fontSize: 29,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 5),
-              Text(
-                '${_expenses.length} ${_expenses.length == 1 ? 'transaction' : 'transactions'}',
-                style: const TextStyle(color: Colors.white70, fontSize: 12),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 24),
-        const Text(
-          'All transactions',
-          style: TextStyle(fontSize: 19, fontWeight: FontWeight.bold),
-        ),
-        const SizedBox(height: 12),
-        ..._expenses.map(
-          (expense) => _TransactionTile(
-            expense: expense,
-            onTap: () => _openExpenseForm(expense: expense),
-            onDelete: () => _deleteExpense(expense),
-          ),
-        ),
-      ],
-    );
-  }
+  Widget _buildExpenseHistory() => ExpenseHistory(
+    expenses: _expenses,
+    primaryColor: _primaryColor,
+    onEdit: (expense) => _openExpenseForm(expense: expense),
+    onDelete: _deleteExpense,
+  );
 
   Widget _buildCalendar() {
     final firstDay = DateTime(_calendarMonth.year, _calendarMonth.month, 1);
@@ -2826,19 +2533,26 @@ class _MainPageState extends State<MainPage> {
           expense.date.day == _selectedCalendarDay.day;
     }).toList()..sort((a, b) => b.date.compareTo(a.date));
 
-    final selectedTotal = selectedExpenses.fold<double>(
-      0,
-      (sum, expense) => sum + expense.amount,
-    );
+    final selectedTotal = Money.sum(selectedExpenses.map((e) => e.amount));
 
-    final monthlyTotal = _expenses
-        .where(
-          (expense) =>
-              expense.date.year == _calendarMonth.year &&
-              expense.date.month == _calendarMonth.month,
-        )
-        .fold<double>(0, (sum, expense) => sum + expense.amount);
+    final monthlyTotal =
+        _expenses
+            .where(
+              (expense) =>
+                  expense.date.year == _calendarMonth.year &&
+                  expense.date.month == _calendarMonth.month,
+            )
+            .fold<int>(0, (sum, expense) => sum + expense.amountCentavos) /
+        100;
 
+    final dailyTotals = <String, int>{};
+    for (final expense in _expenses) {
+      dailyTotals.update(
+        dayKey(expense.date),
+        (total) => total + expense.amountCentavos,
+        ifAbsent: () => expense.amountCentavos,
+      );
+    }
     final calendarCells = <Widget>[];
 
     for (var i = 0; i < startingWeekday; i++) {
@@ -2848,17 +2562,7 @@ class _MainPageState extends State<MainPage> {
     for (var day = 1; day <= daysInMonth; day++) {
       final date = DateTime(_calendarMonth.year, _calendarMonth.month, day);
 
-      final dayExpenses = _expenses.where(
-        (expense) =>
-            expense.date.year == date.year &&
-            expense.date.month == date.month &&
-            expense.date.day == date.day,
-      );
-
-      final dayTotal = dayExpenses.fold<double>(
-        0,
-        (sum, expense) => sum + expense.amount,
-      );
+      final dayTotal = (dailyTotals[dayKey(date)] ?? 0) / 100;
 
       final isSelected =
           date.year == _selectedCalendarDay.year &&
@@ -2871,49 +2575,55 @@ class _MainPageState extends State<MainPage> {
           date.day == DateTime.now().day;
 
       calendarCells.add(
-        InkWell(
-          borderRadius: BorderRadius.circular(12),
-          onTap: () => setState(() => _selectedCalendarDay = date),
-          child: Container(
-            margin: const EdgeInsets.all(2),
-            decoration: BoxDecoration(
-              color: isSelected
-                  ? _primaryColor.withValues(alpha: 0.28)
-                  : Colors.transparent,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
+        Semantics(
+          button: true,
+          selected: isSelected,
+          label:
+              '${date.day} ${_monthName(date.month)} ${date.year}, ${peso(dayTotal)} spent',
+          child: InkWell(
+            borderRadius: BorderRadius.circular(12),
+            onTap: () => setState(() => _selectedCalendarDay = date),
+            child: Container(
+              margin: const EdgeInsets.all(2),
+              decoration: BoxDecoration(
                 color: isSelected
-                    ? _primaryColor
-                    : isToday
-                    ? _primaryColor.withValues(alpha: 0.55)
+                    ? _primaryColor.withValues(alpha: 0.28)
                     : Colors.transparent,
-              ),
-            ),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(
-                  '$day',
-                  style: TextStyle(
-                    color: isSelected ? Colors.white : Colors.white70,
-                    fontWeight: isSelected || isToday
-                        ? FontWeight.bold
-                        : FontWeight.normal,
-                  ),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: isSelected
+                      ? _primaryColor
+                      : isToday
+                      ? _primaryColor.withValues(alpha: 0.55)
+                      : Colors.transparent,
                 ),
-                const SizedBox(height: 4),
-                if (dayTotal > 0)
-                  Container(
-                    width: 5,
-                    height: 5,
-                    decoration: BoxDecoration(
-                      color: isSelected ? Colors.white : _primaryColor,
-                      shape: BoxShape.circle,
+              ),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    '$day',
+                    style: TextStyle(
+                      color: isSelected ? Colors.white : Colors.white70,
+                      fontWeight: isSelected || isToday
+                          ? FontWeight.bold
+                          : FontWeight.normal,
                     ),
-                  )
-                else
-                  const SizedBox(height: 5),
-              ],
+                  ),
+                  const SizedBox(height: 4),
+                  if (dayTotal > 0)
+                    Container(
+                      width: 5,
+                      height: 5,
+                      decoration: BoxDecoration(
+                        color: isSelected ? Colors.white : _primaryColor,
+                        shape: BoxShape.circle,
+                      ),
+                    )
+                  else
+                    const SizedBox(height: 5),
+                ],
+              ),
             ),
           ),
         ),
@@ -2967,7 +2677,7 @@ class _MainPageState extends State<MainPage> {
                   ),
                   Expanded(
                     child: Text(
-                      dateLabel(_calendarMonth),
+                      '${_monthName(_calendarMonth.month)} ${_calendarMonth.year}',
                       textAlign: TextAlign.center,
                       style: const TextStyle(
                         fontSize: 17,
@@ -3096,7 +2806,9 @@ class _MainPageState extends State<MainPage> {
 
     for (final expense in _expenses) {
       totals[expense.category] =
-          (totals[expense.category] ?? 0) + expense.amount;
+          ((Money.centavos(totals[expense.category] ?? 0) +
+              expense.amountCentavos) /
+          100);
     }
 
     final total = _allExpenses;
@@ -3205,6 +2917,13 @@ class _MainPageState extends State<MainPage> {
   }
 
   Widget _buildQuest() {
+    final challengeProgress = RewardEngine.challengeProgress(
+      _expenses,
+      DateTime.now(),
+    );
+    final earnedBadgeCount = allBadges
+        .where((badge) => _earnedBadges.contains(badge.id))
+        .length;
     final level = levelFromXp(_questXp);
     final curLevelMin = xpForLevel(level);
     final nextLevelMin = level >= 7 ? curLevelMin : xpForLevel(level + 1);
@@ -3419,115 +3138,20 @@ class _MainPageState extends State<MainPage> {
         ),
         const SizedBox(height: 20),
 
-        // Tab Toggle: Quests, Achievements, Coin Shop
-        Container(
-          padding: const EdgeInsets.all(4),
-          decoration: BoxDecoration(
-            color: surface,
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: Row(
-            children: [
-              Expanded(
-                child: GestureDetector(
-                  onTap: () => setState(() => _questTabSegment = 0),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    decoration: BoxDecoration(
-                      color: _questTabSegment == 0
-                          ? _primaryColor
-                          : Colors.transparent,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Center(
-                      child: Text(
-                        'Quests',
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 12,
-                          color: _questTabSegment == 0 ? Colors.white : muted,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-              Expanded(
-                child: GestureDetector(
-                  onTap: () => setState(() => _questTabSegment = 2),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    decoration: BoxDecoration(
-                      color: _questTabSegment == 2
-                          ? _primaryColor
-                          : Colors.transparent,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Center(
-                      child: Text(
-                        'Badges',
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 12,
-                          color: _questTabSegment == 2 ? Colors.white : muted,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-              Expanded(
-                child: GestureDetector(
-                  onTap: () => setState(() => _questTabSegment = 1),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    decoration: BoxDecoration(
-                      color: _questTabSegment == 1
-                          ? _primaryColor
-                          : Colors.transparent,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Center(
-                      child: Text(
-                        'Coin Shop',
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 12,
-                          color: _questTabSegment == 1 ? Colors.white : muted,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-              Expanded(
-                child: GestureDetector(
-                  onTap: () => setState(() => _questTabSegment = 3),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    decoration: BoxDecoration(
-                      color: _questTabSegment == 3
-                          ? _primaryColor
-                          : Colors.transparent,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Center(
-                      child: Text(
-                        'Challenges',
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 11,
-                          color: _questTabSegment == 3 ? Colors.white : muted,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: SegmentedButton<int>(
+            segments: const [
+              ButtonSegment(value: 0, label: Text('Quests')),
+              ButtonSegment(value: 2, label: Text('Badges')),
+              ButtonSegment(value: 1, label: Text('Coin Shop')),
+              ButtonSegment(value: 3, label: Text('Challenges')),
             ],
+            selected: {_questTabSegment},
+            onSelectionChanged: (selection) =>
+                setState(() => _questTabSegment = selection.single),
           ),
         ),
-
         const SizedBox(height: 18),
 
         // ─── Tab Content ─────────────────────────────────────────
@@ -3621,7 +3245,7 @@ class _MainPageState extends State<MainPage> {
                   child: LinearProgressIndicator(
                     value: allBadges.isEmpty
                         ? 0
-                        : _earnedBadges.length / allBadges.length,
+                        : earnedBadgeCount / allBadges.length,
                     minHeight: 8,
                     backgroundColor: Colors.white12,
                     valueColor: AlwaysStoppedAnimation<Color>(_primaryColor),
@@ -3629,7 +3253,7 @@ class _MainPageState extends State<MainPage> {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  '${_earnedBadges.length} of ${allBadges.length} badges unlocked',
+                  '$earnedBadgeCount of ${allBadges.length} badges unlocked',
                   style: const TextStyle(
                     color: lavender,
                     fontSize: 12,
@@ -3963,7 +3587,10 @@ class _MainPageState extends State<MainPage> {
           const SizedBox(height: 12),
           ...allChallenges
               .where((challenge) => challenge.period == ChallengePeriod.daily)
-              .map(_buildChallengeCard),
+              .map(
+                (challenge) =>
+                    _buildChallengeCard(challenge, challengeProgress),
+              ),
           const SizedBox(height: 22),
           const Text(
             'WEEKLY CHALLENGES',
@@ -3977,55 +3604,26 @@ class _MainPageState extends State<MainPage> {
           const SizedBox(height: 12),
           ...allChallenges
               .where((challenge) => challenge.period == ChallengePeriod.weekly)
-              .map(_buildChallengeCard),
+              .map(
+                (challenge) =>
+                    _buildChallengeCard(challenge, challengeProgress),
+              ),
         ],
       ],
     );
   }
 
-  Widget _buildChallengeCard(ChallengeDef challenge) {
+  Widget _buildChallengeCard(
+    ChallengeDef challenge,
+    Map<String, int> challengeProgress,
+  ) {
     final now = DateTime.now();
     final periodKey = challenge.period == ChallengePeriod.daily
         ? _challengeDateKey(now)
         : _challengeWeekKey(now);
     final recordKey = '${challenge.id}_$periodKey';
 
-    final todayExpenses = _expenses
-        .where(
-          (expense) =>
-              _challengeDateKey(expense.date) == _challengeDateKey(now),
-        )
-        .toList();
-
-    final monday = DateTime(
-      now.year,
-      now.month,
-      now.day,
-    ).subtract(Duration(days: now.weekday - 1));
-    final nextMonday = monday.add(const Duration(days: 7));
-
-    final weeklyExpenses = _expenses.where((expense) {
-      final date = DateTime(
-        expense.date.year,
-        expense.date.month,
-        expense.date.day,
-      );
-      return !date.isBefore(monday) && date.isBefore(nextMonday);
-    }).toList();
-
-    final progress = switch (challenge.id) {
-      'daily_tracker' => todayExpenses.isNotEmpty ? 1 : 0,
-      'daily_variety' =>
-        todayExpenses.map((expense) => expense.category).toSet().length,
-      'weekly_consistency' =>
-        weeklyExpenses
-            .map((expense) => _challengeDateKey(expense.date))
-            .toSet()
-            .length,
-      'weekly_explorer' =>
-        weeklyExpenses.map((expense) => expense.category).toSet().length,
-      _ => 0,
-    };
+    final progress = challengeProgress[challenge.id] ?? 0;
 
     final isComplete = progress >= challenge.goal;
     final isRewardClaimed = _challengeProgress[recordKey] == true;
@@ -4175,30 +3773,12 @@ class _MainPageState extends State<MainPage> {
     );
   }
 
-  Widget _buildFilterChip(String label, String categoryKey, int count) {
-    final isSelected = _questCategoryFilter == categoryKey;
-    return GestureDetector(
-      onTap: () => setState(() => _questCategoryFilter = categoryKey),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-        decoration: BoxDecoration(
-          color: isSelected ? _primaryColor : surface,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: isSelected ? _primaryColor : Colors.white10,
-          ),
-        ),
-        child: Text(
-          '$label ($count)',
-          style: TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.bold,
-            color: isSelected ? Colors.white : muted,
-          ),
-        ),
-      ),
-    );
-  }
+  Widget _buildFilterChip(String label, String categoryKey, int count) =>
+      FilterChip(
+        label: Text('$label ($count)'),
+        selected: _questCategoryFilter == categoryKey,
+        onSelected: (_) => setState(() => _questCategoryFilter = categoryKey),
+      );
 }
 
 class _MonthlyBudgetDialog extends StatefulWidget {
@@ -4267,13 +3847,15 @@ class _MonthlyBudgetDialogState extends State<_MonthlyBudgetDialog> {
                 hintText: '0.00',
               ),
               validator: (value) {
-                final amount = double.tryParse(value?.trim() ?? '');
+                final amount = Money.parse(value ?? '') == null
+                    ? null
+                    : Money.parse(value ?? '')! / 100;
 
                 if (amount == null ||
                     !amount.isFinite ||
                     amount <= 0 ||
                     amount > 1000000000) {
-                  return 'Enter a valid amount greater than zero.';
+                  return 'Use a positive amount with at most 2 decimal places.';
                 }
 
                 return null;
@@ -4284,6 +3866,11 @@ class _MonthlyBudgetDialogState extends State<_MonthlyBudgetDialog> {
         ),
       ),
       actions: [
+        if (widget.initialAmount > 0)
+          TextButton(
+            onPressed: () => Navigator.pop(context, 0.0),
+            child: const Text('Remove limit'),
+          ),
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
           child: const Text('Cancel'),
@@ -4371,13 +3958,15 @@ class _CategoryBudgetDialogState extends State<_CategoryBudgetDialog> {
                   hintText: '2000.00',
                 ),
                 validator: (value) {
-                  final amount = double.tryParse(value?.trim() ?? '');
+                  final amount = Money.parse(value ?? '') == null
+                      ? null
+                      : Money.parse(value ?? '')! / 100;
 
                   if (amount == null ||
                       !amount.isFinite ||
                       amount <= 0 ||
                       amount > 1000000000) {
-                    return 'Enter a valid amount greater than zero.';
+                    return 'Use a positive amount with at most 2 decimal places.';
                   }
 
                   return null;
@@ -4441,7 +4030,9 @@ class _ExpenseFormState extends State<ExpenseForm> {
     );
 
     _category = expense?.category ?? categories.first;
-    _account = expense?.account ?? widget.accounts.first;
+    _account =
+        expense?.account ??
+        (widget.accounts.isEmpty ? '' : widget.accounts.first);
     _date = expense?.date ?? DateTime.now();
   }
 
@@ -4457,7 +4048,7 @@ class _ExpenseFormState extends State<ExpenseForm> {
       context: context,
       initialDate: _date,
       firstDate: DateTime(2000),
-      lastDate: DateTime.now().add(const Duration(days: 3650)),
+      lastDate: _date.isAfter(DateTime.now()) ? _date : DateTime.now(),
       builder: (context, child) => Theme(
         data: Theme.of(context).copyWith(
           colorScheme: ColorScheme.dark(
@@ -4477,7 +4068,17 @@ class _ExpenseFormState extends State<ExpenseForm> {
   void _submit() {
     if (!(_formKey.currentState?.validate() ?? false)) return;
 
-    final amount = double.parse(_amountController.text.trim());
+    if (calendarDate(_date).isAfter(calendarDate(DateTime.now()))) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Choose today or an earlier date for a recorded expense.',
+          ),
+        ),
+      );
+      return;
+    }
+    final amount = Money.parse(_amountController.text)! / 100;
     final description = _descriptionController.text.trim();
     final oldExpense = widget.expense;
     FocusScope.of(context).unfocus();
@@ -4529,7 +4130,7 @@ class _ExpenseFormState extends State<ExpenseForm> {
               ),
               const SizedBox(height: 6),
               const Text(
-                'Enter the details of your transaction.',
+                'Record completed spending. Choose an account, category and date.',
                 style: TextStyle(color: muted),
               ),
               const SizedBox(height: 22),
@@ -4568,10 +4169,12 @@ class _ExpenseFormState extends State<ExpenseForm> {
                   prefixIcon: Icon(Icons.payments_outlined),
                 ),
                 validator: (value) {
-                  final amount = double.tryParse(value?.trim() ?? '');
+                  final amount = Money.parse(value ?? '') == null
+                      ? null
+                      : Money.parse(value ?? '')! / 100;
 
                   if (amount == null || !amount.isFinite || amount <= 0) {
-                    return 'Enter an amount greater than zero.';
+                    return 'Use a positive amount with at most 2 decimal places.';
                   }
 
                   if (amount > 1000000000) {
@@ -4645,7 +4248,7 @@ class _ExpenseFormState extends State<ExpenseForm> {
                 width: double.infinity,
                 height: 54,
                 child: FilledButton.icon(
-                  onPressed: _submit,
+                  onPressed: widget.accounts.isEmpty ? null : _submit,
                   style: FilledButton.styleFrom(
                     backgroundColor: Theme.of(context).colorScheme.primary,
                     foregroundColor: Colors.white,
@@ -4826,7 +4429,7 @@ class _TransactionTile extends StatelessWidget {
             child: Icon(categoryIcon(expense.category), color: color),
           ),
           title: Text(
-            expense.description,
+            '${expense.description}  ${peso(expense.amount)}',
             style: const TextStyle(fontWeight: FontWeight.w600),
           ),
           subtitle: Text(
