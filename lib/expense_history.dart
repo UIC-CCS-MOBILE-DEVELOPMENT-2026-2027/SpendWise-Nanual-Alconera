@@ -51,96 +51,123 @@ class _ExpenseHistoryState extends State<ExpenseHistory> {
       itemCount: filtered.length + 1,
       itemBuilder: (context, index) {
         if (index == 0) {
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Expense history',
-                style: Theme.of(context).textTheme.headlineSmall,
-              ),
-              const SizedBox(height: 8),
-              Text(
-                '₱${Money.sum(filtered.map((e) => e.amount)).toStringAsFixed(2)}',
-                style: TextStyle(
-                  color: widget.primaryColor,
-                  fontSize: 30,
-                  fontWeight: FontWeight.bold,
+          return Container(
+            padding: const EdgeInsets.all(18),
+            margin: const EdgeInsets.only(bottom: 16),
+            decoration: BoxDecoration(
+              color: const Color(0xFF1C2035),
+              borderRadius: BorderRadius.circular(24),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Expense history',
+                  style: Theme.of(context).textTheme.headlineSmall,
                 ),
-              ),
-              Text('${filtered.length} of ${widget.expenses.length} expenses'),
-              const SizedBox(height: 18),
-              TextField(
-                controller: _search,
-                decoration: InputDecoration(
-                  labelText: 'Search expenses',
-                  hintText: 'Description, category or account',
-                  prefixIcon: const Icon(Icons.search),
-                  suffixIcon: query.isEmpty
-                      ? null
-                      : IconButton(
-                          tooltip: 'Clear search',
-                          onPressed: () => setState(_search.clear),
-                          icon: const Icon(Icons.close),
-                        ),
-                ),
-                onChanged: (_) => setState(() {}),
-              ),
-              const SizedBox(height: 12),
-              DropdownButtonFormField<String>(
-                key: ValueKey(account),
-                initialValue: account ?? '',
-                isExpanded: true,
-                decoration: const InputDecoration(labelText: 'Payment account'),
-                items: [
-                  const DropdownMenuItem(
-                    value: '',
-                    child: Text('All accounts'),
+                const SizedBox(height: 8),
+                Text(
+                  '₱${Money.sum(filtered.map((e) => e.amount)).toStringAsFixed(2)}',
+                  style: TextStyle(
+                    color: widget.primaryColor,
+                    fontSize: 30,
+                    fontWeight: FontWeight.bold,
                   ),
-                  ...accounts.map(
-                    (a) => DropdownMenuItem(
-                      value: a,
-                      child: Text(a, overflow: TextOverflow.ellipsis),
+                ),
+                Text(
+                  '${filtered.length} of ${widget.expenses.length} expenses',
+                ),
+                const SizedBox(height: 18),
+                TextField(
+                  controller: _search,
+                  decoration: InputDecoration(
+                    labelText: 'Search expenses',
+                    hintText: 'Description, category or account',
+                    prefixIcon: const Icon(Icons.search),
+                    suffixIcon: query.isEmpty
+                        ? null
+                        : IconButton(
+                            tooltip: 'Clear search',
+                            onPressed: () => setState(_search.clear),
+                            icon: const Icon(Icons.close),
+                          ),
+                  ),
+                  onChanged: (_) => setState(() {}),
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  key: ValueKey(account),
+                  initialValue: account ?? '',
+                  isExpanded: true,
+                  decoration: const InputDecoration(
+                    labelText: 'Payment account',
+                  ),
+                  items: [
+                    const DropdownMenuItem(
+                      value: '',
+                      child: Text('All accounts'),
+                    ),
+                    ...accounts.map(
+                      (a) => DropdownMenuItem(
+                        value: a,
+                        child: Text(a, overflow: TextOverflow.ellipsis),
+                      ),
+                    ),
+                  ],
+                  onChanged: (value) =>
+                      setState(() => _account = value == '' ? null : value),
+                ),
+                Wrap(
+                  spacing: 12,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    FilterChip(
+                      label: const Text('This month'),
+                      selected: _thisMonth,
+                      onSelected: (value) => setState(() => _thisMonth = value),
+                    ),
+                    TextButton(
+                      onPressed: () => setState(() {
+                        _search.clear();
+                        _account = null;
+                        _thisMonth = false;
+                      }),
+                      child: const Text('Reset filters'),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                if (filtered.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 24),
+                    child: Text(
+                      'No matching expenses. Clear the filters or add an expense.',
                     ),
                   ),
-                ],
-                onChanged: (value) =>
-                    setState(() => _account = value == '' ? null : value),
-              ),
-              Wrap(
-                spacing: 12,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                children: [
-                  FilterChip(
-                    label: const Text('This month'),
-                    selected: _thisMonth,
-                    onSelected: (value) => setState(() => _thisMonth = value),
-                  ),
-                  TextButton(
-                    onPressed: () => setState(() {
-                      _search.clear();
-                      _account = null;
-                      _thisMonth = false;
-                    }),
-                    child: const Text('Reset filters'),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              if (filtered.isEmpty)
-                const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 24),
-                  child: Text(
-                    'No matching expenses. Clear the filters or add an expense.',
-                  ),
-                ),
-            ],
+              ],
+            ),
           );
         }
         final expense = filtered[index - 1];
         return Card(
+          color: const Color(0xFF1C2035),
+          surfaceTintColor: Colors.transparent,
+          elevation: 0,
+          margin: const EdgeInsets.only(bottom: 10),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(18),
+          ),
+          clipBehavior: Clip.antiAlias,
           child: ListTile(
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 14,
+              vertical: 8,
+            ),
             onTap: () => widget.onEdit(expense),
-            title: Text(expense.description),
+            title: Text(
+              expense.description,
+              style: const TextStyle(fontWeight: FontWeight.w600),
+            ),
             subtitle: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
@@ -156,6 +183,10 @@ class _ExpenseHistoryState extends State<ExpenseHistory> {
                 const SizedBox(height: 4),
                 Text(
                   '${expense.category}\n${expense.account} · ${dayKey(expense.date)}',
+                  style: const TextStyle(
+                    color: Color(0xFF9CA3B8),
+                    fontSize: 11,
+                  ),
                 ),
               ],
             ),
