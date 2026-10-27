@@ -1,125 +1,336 @@
 # SpendWise
 
-SpendWise is an offline Flutter expense tracker with account balances, budgeting,
-a calendar, and Money Quest rewards.
+**A Gamified Expense Tracking Mobile Application with Budgeting, Spending Insights, and Money Quest**
+
+SpendWise is a Flutter-based personal finance application that helps users record expenses, monitor spending, manage budgets, and develop better financial habits through gamification. It combines everyday expense tracking with a reward system featuring experience points (XP), coins, badges, levels, themes, and daily and weekly challenges.
+
+This project was developed for academic and mobile application development purposes.
+
+## Table of Contents
+
+- [Features](#features)
+- [Technology Stack](#technology-stack)
+- [Application Architecture](#application-architecture)
+- [Project Structure](#project-structure)
+- [Prerequisites](#prerequisites)
+- [Installation and Setup](#installation-and-setup)
+- [Running the Application](#running-the-application)
+- [Testing and Code Analysis](#testing-and-code-analysis)
+- [Data Storage and Privacy](#data-storage-and-privacy)
+- [AI Disclosure and Human Engineering](#ai-disclosure-and-human-engineering)
+- [Known Limitations](#known-limitations)
+- [License](#license)
 
 ## Features
 
-- Record, edit and delete expenses with a spending category and payment account.
-- Track Cash on Hand, Bank, E-Wallet and custom accounts. Rename an account across
-  its recorded expenses and transfers. Accounts with activity or money cannot be deleted.
-- Transfer between accounts without adding to expense totals.
-- Search expense descriptions, categories and accounts. Filter by payment account
-  and current month. The displayed history total follows the active filters.
-- Set an overall monthly budget and category limits, receive overspending warnings,
-  or remove the overall limit. An unset budget is distinct from an exceeded limit.
-- Browse monthly spending and individual days in Calendar.
-- Earn persistent quests, badges, streaks and daily/weekly challenges. Spend reward
-  coins on themes. These coins have no monetary value.
-- Copy a backup, validate and restore a backup, or copy preserved recovery data.
+### Expense Tracking
+- Add, edit, and delete expense records.
+- Organize expenses by category.
+- Record and review expenses by date.
+- View expense information through the application's interface.
 
-## Development
+### Budget Management
+- Set a monthly budget.
+- Configure category-specific budgets.
+- Monitor spending against budget limits.
+- Receive in-app budget warnings and spending feedback.
 
-The tested toolchain is **Flutter 3.47.2 / Dart 3.13.2**. The package declares
-Dart `^3.12.2`. Install Flutter and an Android SDK/JDK appropriate for the Flutter
-release. CI uses Java 17 and the pinned Flutter version above.
+### Spending Insights and Calendar
+- Review monthly spending summaries.
+- Track expenses using the calendar interface.
+- Navigate between months and inspect individual dates.
+- View daily expense totals and identify dates with recorded transactions.
 
-```sh
-flutter pub get --enforce-lockfile
+### Money Quest Gamification
+- Earn XP and coins through eligible activities.
+- Progress through levels and titles.
+- Complete quests and unlock badges.
+- Maintain activity streaks.
+- Unlock selectable themes through the in-app coin shop.
+
+### Daily and Weekly Challenges
+- Complete daily expense-tracking objectives.
+- Explore different spending categories.
+- Build consistency by recording expenses across different days.
+- Earn XP and coins for eligible completed challenges.
+
+### Local Persistence
+- Store supported application data locally on the device.
+- Retain saved expenses, budgets, and game progress across application sessions, subject to the relevant storage implementation.
+
+## Technology Stack
+
+| Technology | Purpose |
+|---|---|
+| Flutter | Cross-platform mobile application framework |
+| Dart | Primary programming language |
+| `shared_preferences` | Local key-value persistence |
+| Flutter built-in state management | UI state updates using `StatefulWidget` and `setState()` |
+| Git and GitHub | Version control and source code hosting |
+| Android SDK / Android Studio | Android development and testing tools |
+
+**State management note:** The current implementation uses Flutter's built-in state management. Riverpod and `flutter_riverpod` are not part of the documented implementation.
+
+**Backend note:** The current application uses local persistence and does not require a custom remote backend for its core functionality.
+
+## Application Architecture
+
+SpendWise follows a lightweight, UI-centered architecture. The main application screen handles much of the current interface state and application logic, while the expense model represents expense data and the storage service handles persistence.
+
+The following diagram represents the current high-level implementation, rather than a formal MVVM or Riverpod architecture.
+
+```mermaid
+flowchart TD
+    U[User]
+    UI[Flutter UI and Screens]
+    STATE[Application State and Logic<br/>StatefulWidget and setState]
+    MODEL[Expense Model]
+    STORAGE[ExpenseStorage Service]
+    PREFS[SharedPreferences]
+    RESULT[Updated Data and UI]
+
+    U --> UI
+    UI --> STATE
+    STATE --> MODEL
+    STATE <--> STORAGE
+    STORAGE <--> PREFS
+    MODEL --> STATE
+    STATE --> RESULT
+    RESULT --> UI
+```
+
+### Architecture Components
+
+**1. Presentation Layer**
+- Displays expense records, budgets, calendar information, Money Quest, and challenge progress.
+- Receives user input through Flutter widgets.
+- Rebuilds relevant UI components when application state changes.
+
+**2. Application State and Logic**
+- Manages in-memory application state.
+- Uses `setState()` to notify Flutter when relevant UI state changes.
+- Coordinates operations such as expense updates, budget calculations, challenge completion, and reward updates.
+
+**3. Model Layer**
+- `lib/models/expense.dart` defines the expense data model used by the application.
+
+**4. Storage Layer**
+- `lib/services/expense_storage.dart` provides storage operations for supported application data.
+- Uses `shared_preferences` to persist data locally.
+
+**5. Local Data Storage**
+- Stores supported application data on the device using key-value storage.
+- Does not depend on a remote database for the documented core features.
+
+## Project Structure
+
+The principal application files include:
+
+```text
+spendwise/
+├── lib/
+│   ├── main.dart
+│   ├── models/
+│   │   └── expense.dart
+│   └── services/
+│       └── expense_storage.dart
+├── test/
+├── android/
+├── ios/
+├── web/
+├── windows/
+├── linux/
+├── macos/
+├── pubspec.yaml
+├── pubspec.lock
+├── analysis_options.yaml
+└── README.md
+```
+
+The directory tree above highlights the principal files and common Flutter platform directories. Individual generated files and optional platform folders may differ depending on the local checkout.
+
+## Prerequisites
+
+Install the following tools before running the project:
+
+- **Flutter SDK:** https://docs.flutter.dev/get-started/install
+- **Dart SDK:** Included with Flutter.
+- **Git:** https://git-scm.com/downloads
+- **Visual Studio Code:** https://code.visualstudio.com/ or another compatible IDE.
+- **Android Studio and Android SDK:** Required for Android emulator or device development.
+- **Android device or emulator:** Required to run and test the Android application.
+
+Verify the development environment:
+
+```bash
+flutter --version
+dart --version
+flutter doctor
+git --version
+```
+
+Resolve any required Flutter or Android toolchain issues reported by `flutter doctor` before building the application.
+
+## Installation and Setup
+
+### 1. Clone the repository
+
+```bash
+git clone https://github.com/UIC-CCS-MOBILE-DEVELOPMENT-2026-2027/SpendWise-Nanual-Alconera.git
+```
+
+### 2. Open the project directory
+
+```bash
+cd SpendWise-Nanual-Alconera
+```
+
+If the repository is already cloned, open its existing local project directory instead.
+
+### 3. Install dependencies
+
+```bash
+flutter pub get
+```
+
+This downloads the dependencies declared in `pubspec.yaml`.
+
+### 4. Check the project configuration
+
+```bash
+flutter doctor
 flutter analyze
-flutter test
+```
+
+Confirm that the necessary development tools are installed and review any reported code issues.
+
+## Running the Application
+
+Connect an Android device with USB debugging enabled or start an Android emulator.
+
+List available devices:
+
+```bash
+flutter devices
+```
+
+Run the application in development mode:
+
+```bash
 flutter run
 ```
 
-Keep `pubspec.lock` committed so developers and CI use the same dependency set.
-The Android SharedPreferences implementation override retains the tested release
-startup-fix floor. Do not remove or upgrade it without Android release testing.
+To select a particular device, use the device identifier shown by `flutter devices`:
 
-## Accounts and money
-
-Opening balances represent the amount held **before all recorded transactions**.
-They are setup values, not income records. New accounts start at zero. Expenses
-can make a balance negative when the opening amount is missing or spending exceeds
-funds. Transfers require sufficient available funds.
-
-For a withdrawal, transfer from Bank or E-Wallet to Cash on Hand. Record any
-withdrawal fee separately from the account charged. Transfers preserve the total
-across accounts and do not count toward expense budgets or expense challenges.
-
-Expense and transfer amounts use integer centavos internally. Account balances and
-summary calculations aggregate centavos. Forms accept ordinary positive decimal
-amounts with at most two fractional digits; opening balances also allow zero.
-Recorded expenses use today or an earlier date. Existing future-dated entries are
-retained during upgrades, but excluded from earned activity rewards. Correct their
-dates before saving an edit. Legacy fractional values round to the nearest centavo
-when converted; the original legacy storage keys remain on the device.
-
-## Storage, backups and recovery
-
-The app uses a versioned snapshot (`spendwise_snapshot_v1`) in SharedPreferences.
-Financial account renames save wallet and expense references in one update. Reward
-claims and balances save together, as do theme purchases and coin deductions.
-Writes are serialized across storage instances and UI mutations are coordinated.
-Legacy preference records are read and validated when no snapshot exists. The first
-successful write creates the snapshot and preserves the legacy keys. Older app
-versions do not understand the new snapshot; avoid downgrading after entering data.
-
-A malformed saved record opens a recovery screen instead of silently resetting
-history. Normal editing stays disabled until loading succeeds or a valid backup is
-restored. There is no automatic destructive reset.
-
-Open **Backup and restore** from the dashboard icon or an app-bar action:
-
-1. Choose **Copy backup**, then paste into a text file and save it securely.
-2. To restore, paste a previously exported SpendWise backup and choose **Review restore**.
-3. Review the expense count and confirm replacement. Import replaces, rather than
-   merges, the data. Validation happens before any replacement.
-
-Before restoring, a raw recovery copy is retained on-device under
-`spendwise_before_restore`. The recovery screen can also copy unreadable data for
-troubleshooting. Recovery dumps are not directly importable backups.
-
-Backups contain private financial information and are **not encrypted**. Clipboard
-contents may be visible to other applications or clipboard managers. SharedPreferences
-remains a lightweight local store with platform-specific disk-persistence guarantees;
-the snapshot approach prevents split-key updates but is not a transactional database.
-Keep an external backup for important records. Platform backup/restore may apply
-according to device settings. There is no app-managed cloud sync, bank integration,
-login or app lock.
-
-## Project structure
-
-- `lib/main.dart`: app shell, screens, dialogs and coordinated UI actions.
-- `lib/expense_history.dart`: filtered history with lazy record construction.
-- `lib/wallet_panel.dart`: account management and transfer interfaces.
-- `lib/backup_dialog.dart`: backup/recovery and restore confirmation.
-- `lib/domain/money.dart`: decimal input parsing and centavo arithmetic.
-- `lib/domain/reward_engine.dart`: pure, date-aware reward and streak calculations.
-- `lib/models/`: financial models and backward-compatible serialization.
-- `lib/services/expense_storage.dart`: snapshot validation, migration and grouped writes.
-- `test/`: financial integrity, reward rules, failure paths and widget regression tests.
-
-Git history replaces the old `*_before_badges.dart` copies and troubleshooting logs.
-
-## Android testing and distribution
-
-```sh
-flutter build apk --release --no-pub
+```bash
+flutter run -d DEVICE_ID
 ```
 
-Test APK output: `build/app/outputs/flutter-apk/app-release.apk`.
-**Release builds currently use the development signing key.** Configure a permanent
-application ID, protected release signing credentials and a versioning policy before
-public distribution. Changing identity/signing may prevent existing installations
-from updating normally. Never commit signing keys or passwords.
+Replace `DEVICE_ID` with the actual identifier of the selected device.
 
-CI runs analysis, tests and an Android release-build check. Automated tests mock
-storage and phone keyboard insets; they do not replace physical-device testing.
-Before distribution, verify expense and budget saving with the keyboard open,
-account rename/delete, transfers, backup/restore, cold restart persistence, calendar
-navigation and theme purchases on a physical Android device. Test upgrades using
-realistic legacy records, large text and screen-reader navigation.
+### Build a Release APK
+
+To create an Android release APK:
+
+```bash
+flutter build apk --release
+```
+
+The generated APK is normally located at:
+
+```text
+build/app/outputs/flutter-apk/app-release.apk
+```
+
+Transfer the APK to a compatible Android device for installation and testing. The build output may change if the project's build configuration is modified.
+
+## Testing and Code Analysis
+
+Run the automated Flutter tests:
+
+```bash
+flutter test
+```
+
+Analyze the Dart source code:
+
+```bash
+flutter analyze
+```
+
+Build the release APK:
+
+```bash
+flutter build apk --release
+```
+
+These commands serve different purposes:
+
+- `flutter test` runs the automated tests included in the project.
+- `flutter analyze` checks source code for reported errors, warnings, and lint issues.
+- `flutter build apk --release` verifies that the application can be compiled into a release APK.
+
+Manual testing should also cover adding, editing, and deleting expenses; budget calculations; persistence after restarting the app; calendar navigation; challenge completion; and XP and coin reward updates.
+
+A successful automated test or build does not by itself guarantee that every feature works correctly on every physical device. Record test results only after running the corresponding checks.
+
+## Data Storage and Privacy
+
+SpendWise uses `shared_preferences` for local key-value persistence.
+
+The documented core implementation does not require a remote application backend or external financial data API. Application records saved through this mechanism are stored locally on the device.
+
+Users should understand that:
+- Local application data may be lost if app data is cleared or the application is uninstalled.
+- Key-value preferences are not a substitute for an encrypted financial database.
+- The application should not be represented as a production banking service or as a secure financial account integration.
+- Actual storage behavior depends on the implementation of each feature.
+
+## AI Disclosure and Human Engineering
+
+This project was developed with AI-assisted support alongside human engineering, implementation, testing, and decision-making. AI assistance is disclosed here to distinguish development support from the work required to integrate, validate, and maintain the application.
+
+### AI Tools Used
+
+**ChatGPT (OpenAI)** was used as an AI-assisted development tool for activities such as:
+- Brainstorming and refining application features.
+- Explaining Flutter and Dart concepts.
+- Providing code suggestions and implementation guidance.
+- Troubleshooting reported issues and interpreting errors.
+- Helping prepare technical documentation and setup instructions.
+
+AI-generated suggestions were treated as development assistance, not as proof that code was correct or functional. The project was integrated and evaluated through the development workflow.
+
+### Human Engineering and Responsibilities
+
+Human engineering work included:
+- Selecting and refining the application's purpose and feature requirements.
+- Making implementation and design decisions for the application.
+- Integrating and adapting code within the Flutter project.
+- Running the application and investigating issues encountered during development.
+- Testing application behavior on available development environments and devices.
+- Running Flutter analysis, automated tests, and release builds as appropriate.
+- Reviewing and refining the project based on observed behavior and testing results.
+
+The developer remains responsible for the final source code, application behavior, technical decisions, testing, and submitted deliverables.
+
+### Transparency and Limitations
+
+AI assistance does not replace software engineering judgment, independent verification, or testing. AI-generated code or explanations can contain errors and must be reviewed before being relied upon.
+
+This disclosure describes the AI-assisted workflow used for the project; it does not claim that every line of code was independently authored without assistance or that AI tools directly executed every implementation and testing task.
+
+Any additional AI tools, services, or contributors should be listed if they were actually used. The disclosure should be updated to reflect the final development process submitted for academic evaluation.
+
+## Known Limitations
+
+- Application data is primarily stored locally rather than synchronized through a remote account.
+- The core implementation does not provide cloud backup or multi-device synchronization.
+- The application does not directly connect to bank accounts or financial institutions.
+- Data retention depends on local application storage and device behavior.
+- The current state-management implementation uses Flutter's built-in mechanisms rather than Riverpod.
+- Production readiness, security guarantees, and comprehensive device compatibility have not been established solely by development builds or automated tests.
 
 ## License
 
-No license has been specified. Contact the project owners before redistribution.
+No license has been specified in this repository documentation. Unless a license is added, users should not assume that the source code is available for unrestricted reuse or redistribution.
