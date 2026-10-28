@@ -182,6 +182,31 @@ startup-fix floor. Re-evaluate it only alongside Android release testing.
 
 ## Running the application
 
+### Choose Android or iPhone
+
+With Python 3 and Flutter available in your terminal, run:
+
+```sh
+python3 scripts/run_mobile.py
+```
+
+Choose **Android** or **iPhone (iOS)**, then choose a device if more than one is
+connected. If no iOS device is running, the launcher offers installed iPhone
+simulators and starts the selected one. Physical iPhones may also require device
+trust, Developer Mode, and signing configuration in Xcode.
+
+In **VS Code**, press **Command + Shift + B** on macOS (or **Ctrl + Shift + B** on
+Windows/Linux) and select Android or iPhone. You can also use **Terminal > Run Task >
+SpendWise: Run on Android or iPhone**. This task uses the same launcher and requires
+Python 3 (`python3`). Use the task terminal for Flutter's reload and quit commands.
+
+Android requires a connected phone with USB debugging or a running Android emulator.
+iPhone execution requires macOS and Xcode. These choices select a real device or
+simulator; they do not simulate iOS inside an Android app. The plain `flutter run`
+command and the normal VS Code Flutter debugger remain available.
+
+### Standard Flutter commands
+
 Connect an Android device with USB debugging enabled or start an emulator:
 
 ```sh

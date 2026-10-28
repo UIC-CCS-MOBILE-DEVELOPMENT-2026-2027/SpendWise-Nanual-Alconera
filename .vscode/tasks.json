@@ -1,0 +1,26 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "SpendWise: Run on Android or iPhone",
+      "type": "process",
+      "command": "python3",
+      "args": ["${workspaceFolder}/scripts/run_mobile.py", "--platform", "${input:mobilePlatform}"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": [],
+      "presentation": { "reveal": "always", "focus": true, "panel": "dedicated" },
+      "group": { "kind": "build", "isDefault": true }
+    }
+  ],
+  "inputs": [
+    {
+      "id": "mobilePlatform",
+      "type": "pickString",
+      "description": "Run SpendWise on which phone platform?",
+      "options": [
+        { "label": "Android", "value": "android" },
+        { "label": "iPhone (iOS)", "value": "ios" }
+      ]
+    }
+  ]
+}
